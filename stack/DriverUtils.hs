@@ -5,7 +5,7 @@ module DriverUtils where
 
 import Test.QuickCheck
 import qualified Test.QuickCheck.Property as QCProp
-import Test.QuickCheck.State 
+import qualified Test.QuickCheck.State as State
 import Test.QuickCheck.Random
 import Control.Monad
 import Control.Applicative
@@ -518,7 +518,7 @@ checkProperty discard_ref pr microsecs
                                     
        discard_cb tests_run
          = QCProp.PostTest
-                     QCProp.NotCounterexample $ \MkState{numDiscardedTests = dn, numSuccessTests= sn} _ ->
+                     QCProp.NotCounterexample $ \State.MkState{numDiscardedTests = dn, numSuccessTests= sn} _ ->
                      modifyIORef discard_ref (const dn) >> modifyIORef tests_run (const sn)
 
 data TestCounters 
