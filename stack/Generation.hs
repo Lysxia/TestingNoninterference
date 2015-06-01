@@ -65,18 +65,10 @@ No cleverness here. Generate absolutely random memory/stack and
 instruction stream; but still respect the smart_ints flag
 -----------------------------------------------------------------------}
 genNaive :: Flaggy DynFlags => Gen AS
-genNaive = mkWeighted (const 1)
-
-instrWeights :: Flaggy DynFlags => InstrKind -> Int
-instrWeights = case prop_test getFlags of
-  PropEENI -> weights_EENI
-  PropLLNI -> weights_LLNI
-  PropJustProfile -> weights_EENI -- Using weights_EENI for profiling
-  PropJustProfileVariation -> weights_EENI
-  _        -> error "genWeighted: unsupported property"
+genNaive = mkWeighted
 
 genWeighted :: Flaggy DynFlags => Gen AS
-genWeighted = mkWeighted instrWeights
+genWeighted = mkWeighted
 
 genSequence :: Flaggy DynFlags => Gen AS
 genSequence = do
@@ -92,14 +84,15 @@ genSequence = do
       genInstrMem i acc maxSize
         | i >= maxSize = return acc
         | otherwise = do
+          let TMUDriver{..} = getFlags
           instrs <-
             frequency $
-            [ (10, (:[]) <$> genWeightedInstr instrWeights' gInt) ] ++
-            [ (1, push2AndDo Add <$> labeled gInt <*> labeled gInt) ] ++
-            [ (1, pushAndDo Load <$> labeled maddr) ] ++
-            [ (1, push2AndDo Store <$> labeled gInt <*> labeled maddr) ] ++
-            [ (1, pushAndDo Jump <$> labeled iaddr) | jumpy ] ++
-            [ (1, do { c_args <- choose (0, maxArgs)
+            [ (genSequence_wInstr, (:[]) <$> genWeightedInstr gInt) ] ++
+            [ (genSequence_add, push2AndDo Add <$> labeled gInt <*> labeled gInt) ] ++
+            [ (genSequence_load, pushAndDo Load <$> labeled maddr) ] ++
+            [ (genSequence_store, push2AndDo Store <$> labeled gInt <*> labeled maddr) ] ++
+            [ (genSequence_jump, pushAndDo Jump <$> labeled iaddr) | jumpy ] ++
+            [ (genSequence_mem, do { c_args <- choose (0, maxArgs)
                      ; c_ret  <- arbitrary
                      ; addr <- labeled iaddr
                      ; proc_size <- choose (0, (maxSize - i) `div` 2)
@@ -107,15 +100,9 @@ genSequence = do
                      ; b <- arbitrary
                      ; return $ pushAndDo (Call c_args c_ret) addr
                        ++ proc ++ [Return b]}) | cally ]
-
           genInstrMem (i + length instrs) (instrs ++ acc) maxSize
 
       gInt = smartInt aimemSize amemSize
-
-      instrWeights' CALL = 0
-      instrWeights' RETURN = 0
-      instrWeights' HALT = 120
-      instrWeights' kind = instrWeights kind
 
       iaddr = genValidIAddr aimemSize
       maddr = genValidMAddr amemSize
@@ -127,39 +114,19 @@ genSequence = do
       jumpy  = jumpAllowed  (gen_instrs getFlags)
 
   aimem <- genInstrMem 0 [] aimemSize
+-- PARAM
   (astk,apcl) <- case starting_as getFlags of
        StartInitial      -> liftA2 (,) (pure []) (pure L)
        StartQuasiInitial -> liftA2 (,) (listOf $ AData <$> labeled gInt) (pure L)
        StartArbitrary    -> arbitrary
   return AS {apc = Labeled apcl 0, ..}
 
--- Here somebody has just repeated the frequency table for ainstr with
--- no extra cleverness! TODO: try to share these tables
-weights_LLNI :: Flaggy DynFlags => InstrKind -> Int
-weights_LLNI PUSH = -- we generate significantly more pushes
-  if starting_as getFlags == StartInitial then 300 else 150
-  -- CH: TODO: tweak this more
-  -- should make a distinction between Basic and Cally?
-weights_LLNI NOOP = 1   -- we avoid noops
-weights_LLNI HALT = 5   -- we avoid halts
-weights_LLNI _    = 40
-
--- A fresh set of weights for EENI
-weights_EENI :: Flaggy DynFlags => InstrKind -> Int
-weights_EENI PUSH =  -- we generate significantly more pushes
-  if starting_as getFlags == StartInitial then 400 else 200
-  -- CH: TODO: tweak this more
-  -- why is there a distinction here wrt LLNI?
-  -- is it just to account for NOOPs and HALTs which have different weights?
-weights_EENI HALT = 70   -- we generate slightly more halts
-weights_EENI _    = 40
-
-mkWeighted :: Flaggy DynFlags => (InstrKind -> Int) -> Gen AS
-mkWeighted w = do
+mkWeighted :: Flaggy DynFlags => Gen AS
+mkWeighted = do
   aimemSize <- choose $ gen_instrs_range getFlags
   (mem,stk,pc) <- initAS aimemSize
   let amemSize = length mem
-  imem <- mapM (const $ genWeightedInstr w (smartInt aimemSize amemSize)) [0..aimemSize-1]
+  imem <- mapM (const $ genWeightedInstr (smartInt aimemSize amemSize)) [0..aimemSize-1]
   return AS { apc = pc, amem = mem, astk = stk, aimem = imem }
 
 {-   
@@ -182,25 +149,27 @@ mkWeighted w = do
  where gen_stk = listOf $
  -}               
 
-genWeightedInstr :: Flaggy DynFlags => (InstrKind -> Int) -> Gen Int -> Gen Instr
-genWeightedInstr w gint = frequency $
-      [ (w NOOP,    pure Noop) ] ++
-      [ (w HALT,    pure Halt) ] ++
-      [ (w ADD,     pure Add) ] ++
-      [ (w PUSH,    liftM Push (labeled gint)) ] ++
-      [ (w POP,     pure Pop) ] ++
-      [ (w STORE,   pure Store) ] ++
-      [ (w LOAD,    pure Load) ] ++
-      [ (w CALL,    liftM2 Call (choose (0, maxArgs)) arbitrary) | cally ] ++ 
-      [ (w RETURN,  liftM Return arbitrary) | cally ] ++
-      [ (w JUMP,    pure Jump) | jumpy ]
-    where maxArgs = conf_max_call_args getFlags
-          cally   = callsAllowed   $ gen_instrs getFlags
-          jumpy   = jumpAllowed    $ gen_instrs getFlags
+genWeightedInstr :: Flaggy DynFlags => Gen Int -> Gen Instr
+genWeightedInstr gint =
+  frequency $
+      [ (w_noop,    pure Noop) ] ++
+      [ (w_halt,    pure Halt) ] ++
+      [ (w_add,     pure Add) ] ++
+      [ (w_push,    liftM Push (labeled gint)) ] ++
+      [ (w_pop,     pure Pop) ] ++
+      [ (w_store,   pure Store) ] ++
+      [ (w_load,    pure Load) ] ++
+      [ (w_call,    liftM2 Call (choose (0, maxArgs)) arbitrary) | cally ] ++ 
+      [ (w_return,  liftM Return arbitrary) | cally ] ++
+      [ (w_jump,    pure Jump) | jumpy ]
+    where maxArgs = conf_max_call_args
+          cally   = callsAllowed gen_instrs
+          jumpy   = jumpAllowed gen_instrs
+          TMUDriver{..} = getFlags
 
 -- generate valid code and data addresses more often
 smartInt :: Flaggy DynFlags => Int -> Int -> Gen Int
-smartInt = smartIntWeighted (1,1,1)
+smartInt = smartIntWeighted (w_smartInt getFlags)
 
 smartIntWeighted :: Flaggy DynFlags => (Int,Int,Int) -> Int -> Int -> Gen Int
 smartIntWeighted (int_weight,imem_weight,mem_weight) aimemSize amemSize
@@ -274,14 +243,13 @@ initAS n = case starting_as getFlags of
 stkMem :: Flaggy DynFlags => Int -> Gen ([Atom], [AStkElt])
 stkMem n -- imem size
   = do { amemSize  <- sized $ \x -> choose (0,x)
-                        
        ; amem_init <- vectorOf amemSize (labeled $ smartInt n amemSize)
            -- DV: used to be: frequency [(1,int),(2,genValidIAddr n)]
-                        
+       ; let (w_data, w_ret) = w_data_ret getFlags
        ; astk_init <-
               listOf $ frequency $
-              [ (5, fmap AData (labeled $ smartIntWeighted (1,1,4) n amemSize)) ] ++ 
-              [ (1, fmap ARet  (labeled aret_rand_pair)) | callsAllowed (gen_instrs getFlags) ] 
+              [ (w_data, fmap AData (labeled $ smartIntWeighted (w_smartInt2 getFlags) n amemSize)) ] ++
+              [ (w_ret, fmap ARet  (labeled aret_rand_pair)) | callsAllowed (gen_instrs getFlags) ]
        ; return (amem_init, astk_init) }
   where aret_rand_pair = liftA2 (,) (genValidIAddr n) arbitrary
 
@@ -450,9 +418,6 @@ replaceNoops is mis
   where merge Nothing i = i
         merge (Just i) (Nothing) = Just i
         merge (Just _) (Just j)  = Just j
-
-
-
 
 {----------------------------------------------------------------------
 Note [GenByExecBothBranches]
@@ -868,14 +833,15 @@ ainstr :: Flaggy DynFlags
        -> Int -- HALT weight
        -> Gen Instr
 ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
-  frequency $
-    [ (1,  pure Noop) ] ++
-    [ (5 + halt_extra_weight,  pure Halt) ] ++
-    [ (40, pure Jump) | nstk >= 1
+  let TMUDriver{..} = getFlags
+  in frequency $
+    [ (w_noop,  pure Noop) ] ++
+    [ (w_halt + halt_weight * w_halt_mul,  pure Halt) ] ++
+    [ (w_jump, pure Jump) | nstk >= 1
                       , let vt' = vtop
                       , vt' >= 0 && vt' < imem_size
                       , jumpy ] ++
-    [ (40, liftM2 Call (choose (0, (nstk-1) `min` maxArgs)) arbitrary)
+    [ (w_call, liftM2 Call (choose (0, (nstk-1) `min` maxArgs)) arbitrary)
                          | nstk >= 1
                          , let vt' = vtop
                          , vt' >= 0 && vt' < imem_size
@@ -884,28 +850,23 @@ ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
     -- generating anything except Jump, JumpNZ, and Call.
     if slack <= 1 then [] else
 --    if length (aimem as) + 1  then [] else
-    [ (40, pure Add) | nstk >= 2 ] ++
-    [ (300, Push <$> labeled (smartInt imem_size $ length mem)) ] ++
-    [ (40, pure Pop) |
-      if IfcBugPopPopsReturns `elem` ifc_semantics_singleton getFlags 
+    [ (w_add, pure Add) | nstk >= 2 ] ++
+    [ (w_push, Push <$> labeled (smartInt imem_size $ length mem)) ] ++
+    [ (w_pop, pure Pop) |
+      if IfcBugPopPopsReturns `elem` ifc_semantics_singleton
         then not (null stk)
         else nstk >= 1 ] ++
-    [ (60, pure Store) | nstk >= 2
+    [ (w_store, pure Store) | nstk >= 2
                        , vtop `isIndex` mem
                        , extra_label_checks
                        ] ++
-    [ (60, pure Load) | nstk >= 1
+    [ (w_load, pure Load) | nstk >= 1
                       , vtop `isIndex` mem ] ++
-    [ (40, liftM Return arbitrary) | Just r <- [ astkReturns <$>
+    [ (w_return, liftM Return arbitrary) | Just r <- [ astkReturns <$>
                                                  find (not . isAData) stk]
                                    , nstk >= if r then 1 else 0 
                                    , cally ]
   where
-
-    halt_extra_weight
-      |prop `elem` [PropEENI, PropJustProfile, PropJustProfileVariation]
-      = halt_weight * 10
-      | otherwise = 0
     
     extra_label_checks =
       {-# SCC "extra_label_checks" #-}
@@ -935,34 +896,35 @@ ainstrs imem_size slack as@(AS{amem = mem, astk = stk}) halt_weight =
   --        "\nslack = " ++ show slack ++
   --        "\namem  = " ++ show mem ++ 
   --        "\nastk  = " ++ show stk) $
-  frequency $
-    [ (10, (:[]) <$> ainstr imem_size slack as halt_weight) ] ++
+  let TMUDriver{..} = getFlags
+  in frequency $
+    [ (mw_single, (:[]) <$> ainstr imem_size slack as halt_weight) ] ++
     if slack <= 2 then [] else
     -- if length (aimem as) + 2 >= imem then [] else
-    [ (1, pushAndDo Load  <$> labeled maddr) | not (null mem) ] ++
+    [ (mw_load, pushAndDo Load  <$> labeled maddr) | not (null mem) ] ++
 
-    [ (3, pushAndStoreChecked as) | not (null mem), not (null stk) ] ++
+    [ (mw_store, pushAndStoreChecked as) | not (null mem), not (null stk) ] ++
 
 -- Used to be:
 --    [ (2, pushAndDo Store <$> labeled maddr) | not (null mem)
 --                                               , length stk >= 1 ] ++
     
-    [ (1, pushAndDo Jump  <$> labeled iaddr) | jumpy ] ++
-    [ (1, do { c_args <- choose(0, maxArgs `min` length (takeWhile isAData stk))
+    [ (mw_jump, pushAndDo Jump  <$> labeled iaddr) | jumpy ] ++
+    [ (mw_call, do { c_args <- choose(0, maxArgs `min` length (takeWhile isAData stk))
              ; c_ret  <- arbitrary
              ; pushAndDo (Call c_args c_ret) <$> labeled iaddr }) | cally ]
   where
     iaddr = if smart_ints getFlags
             then imem_size `upfrom` 0
             else int
-    maddr = frequency
-            [ (1, length mem `upfrom` 0)
+    maddr = let (w_maddr0, w_maddr1) = w_maddr getFlags in frequency
+            [ (w_maddr0, length mem `upfrom` 0)
 -- DV: used to be like this 
 -- but this is a bug: min associates to the 
 -- left so if the length of the memory is e.g 1
 -- we get out of address violations ...  
 --          , (9, ((length mem `min` 0+2) `upfrom` 0)) 
-            , (9, (length mem `min` 3) `upfrom` 0)
+            , (w_maddr1, (length mem `min` 3) `upfrom` 0)
             -- Instead I will just reuse very often the first three memory locations
             ]
             -- ensure we reuse locations often
@@ -977,8 +939,9 @@ ainstrs imem_size slack as@(AS{amem = mem, astk = stk}) halt_weight =
             let vls = filter (is_wf . goodA . Labeled l) all_addresses
             in if vls == empty then []
                else [(w, elements (map (Labeled l) vls))]
+          (w0, w1, w2) = w_push_maddr getFlags
           push_maddr = frequency $
-                       good_maddrs 200 L ++ good_maddrs 5 H ++ [(1, labeled maddr)]
+                       good_maddrs w0 L ++ good_maddrs w1 H ++ [(w2, labeled maddr)]
       in pushAndDo Store <$> push_maddr
 
     pushAndDo i a = [Push a, i]
@@ -1014,12 +977,16 @@ genTinySSNI :: Flaggy DynFlags => Gen AS
 genTinySSNI
   | StartArbitrary <- starting_as getFlags
   = do { amem  <- mapM (const arbitrary) [0..2]
+-- PARAM
        ; astkSize <- frequency [(x,return x) | x <- [1..15] ]
+-- PARAM
        ; astk  <- mapM (\_ -> oneof [arbitrary, AData <$> labeled genDataPtr])
                   [0..(astkSize-1)]
          -- making sure there is at least one return address on the stack
-       ; extraRet <- frequency [(10, liftM (\x->[x]) (ARet <$> arbitrary)),
-                                (1, return [])]
+       ; let (w_extraret0, w_extraret1) = w_extraret getFlags
+       ; extraRet <- frequency [(w_extraret0, liftM (\x->[x]) (ARet <$> arbitrary)),
+                                (w_extraret1, return [])]
+-- PARAM
        ; apcl  <- elements [L,H]
        ; let as = AS { amem  = amem
                      , aimem = [undefined] -- to be filled in later
@@ -1027,7 +994,9 @@ genTinySSNI
                      , apc   = Labeled apcl 0 }
        ; instr1 <- ainstr' as
          -- often generate related instructions
-       ; instr2 <- frequency [(10, varyInstr instr1), (1, ainstr' as)]
+       ; let (w_vary0, w_vary1) = w_vary getFlags
+       ; instr2 <- frequency [(w_vary0, varyInstr instr1),
+                              (w_vary1, ainstr' as)]
        ; return $ as { aimem = [instr1, instr2] } }
   | otherwise
   = error "Only use this generator for starting in an arbitrary state!"
@@ -1052,26 +1021,27 @@ ainstr' :: Flaggy DynFlags
        => AS
        -> Gen Instr
 ainstr' _as@(AS{amem=mem, astk=stk}) =
-  frequency $
-    [ (1, pure Noop) ] ++
-    [ (1, pure Halt) ] ++
-    [ (10, pure Add) | nstk >= 2 ] ++
-    [ (10, Push <$> lint) ] ++
-    [ (10, pure Pop) | if IfcBugPopPopsReturns `elem` ifc_semantics_singleton getFlags 
+  let TMUDriver{..} = getFlags
+  in frequency $
+    [ (w_noop, pure Noop) ] ++
+    [ (w_halt, pure Halt) ] ++
+    [ (w_add, pure Add) | nstk >= 2 ] ++
+    [ (w_push, Push <$> lint) ] ++
+    [ (w_pop, pure Pop) | if IfcBugPopPopsReturns `elem` ifc_semantics_singleton
                          then not (null stk)
                          else nstk >= 1 ] ++
-    [ (20, pure Store) | nstk >= 2
+    [ (w_store, pure Store) | nstk >= 2
                        , vtop `isIndex` mem ] ++
-    [ (20, pure Load) | nstk >= 1
+    [ (w_load, pure Load) | nstk >= 1
                       , vtop `isIndex` mem ] ++
-    [ (10, liftM2 Call (choose (0, (nstk-1) `min` maxArgs)) arbitrary)
+    [ (w_call, liftM2 Call (choose (0, (nstk-1) `min` maxArgs)) arbitrary)
                          | nstk >= 1
                          , cally ] ++
-    [ (20, liftM Return arbitrary) | Just r <- [ astkReturns <$>
+    [ (w_return, liftM Return arbitrary) | Just r <- [ astkReturns <$>
                                                 find (not . isAData) stk]
                                    , nstk >= if r then 1 else 0 
                                    , cally ] ++
-    [ (10, pure Jump) | nstk >= 1
+    [ (w_jump, pure Jump) | nstk >= 1
                       , jumpy ]
   where
     nstk    = length $ takeWhile isAData stk

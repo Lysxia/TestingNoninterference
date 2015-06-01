@@ -475,7 +475,6 @@ checkProperty discard_ref pr microsecs
              print gen
          ; tests_run <- newIORef 0 
          ; start <- getCPUTime
-                    
          ; r <- timeout' microsecs $
            -- withTimeout $
                 quickCheckWithResult

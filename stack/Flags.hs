@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable, RecordWildCards #-}
 module Flags where
 
 import Data.Typeable
@@ -259,6 +259,41 @@ data TMUDriver
              , latex_output          :: Bool
              , print_all_datapoints  :: Bool -- print all times taken to find bugs
              , run_timeout_tests     :: Bool
+
+             , genSequence_wInstr :: Int
+             , genSequence_add :: Int
+             , genSequence_load :: Int
+             , genSequence_store :: Int
+             , genSequence_jump :: Int
+             , genSequence_mem :: Int
+
+             , w_noop :: Int
+             , w_halt :: Int
+             , w_add :: Int
+             , w_push :: Int
+             , w_pop :: Int
+             , w_store :: Int
+             , w_load :: Int
+             , w_call :: Int
+             , w_return :: Int
+             , w_jump :: Int
+
+             , mw_single :: Int
+             , mw_load :: Int
+             , mw_store :: Int
+             , mw_jump :: Int
+             , mw_call :: Int
+
+             , w_halt_mul :: Int
+
+             , w_push_maddr :: (Int, Int, Int)
+             , w_maddr :: (Int, Int)
+             , w_vary :: (Int, Int)
+             , w_extraret :: (Int, Int)
+
+             , w_smartInt :: (Int, Int, Int)
+             , w_smartInt2 :: (Int, Int, Int)
+             , w_data_ret :: (Int, Int)
              }
   deriving (Eq, Read, Show, Data, Typeable)
 
@@ -302,7 +337,101 @@ dynFlagsDflt
               
               , print_all_datapoints  = False
               , run_timeout_tests     = True
+
+              , genSequence_wInstr = 10
+              , genSequence_add = 1
+              , genSequence_load = 1
+              , genSequence_store = 1
+              , genSequence_jump = 1
+              , genSequence_mem = 1
+
+              -- 0 = default, set by finalizeFlags, which must be called
+              -- just after running cmdArgs
+              , w_noop = 0
+              , w_halt = 0
+              , w_add = 0
+              , w_push = 0
+              , w_pop = 0
+              , w_store = 0
+              , w_load = 0
+              , w_call = 0
+              , w_return = 0
+              , w_jump = 0
+
+              , mw_single = 10
+              , mw_load = 1
+              , mw_store = 3
+              , mw_jump = 1
+              , mw_call = 1
+
+              , w_halt_mul = 10
+
+              , w_maddr = (9, 1)
+              , w_push_maddr = (200, 5, 1)
+
+              , w_vary = (9, 1)
+              , w_extraret = (9, 1)
+
+              , w_smartInt = (1, 1, 1)
+              , w_smartInt2 = (1, 1, 4)
+
+              , w_data_ret = (5, 1)
               }
+
+finalizeFlags :: DynFlags -> DynFlags
+finalizeFlags f =
+  let byExec = [GenByExec, GenByExec1, GenByExec2, GenByExec3, GenByExec4]
+      variat = [GenVariational, GenVariational1, GenVariational2,
+                GenVariational3, GenVariational4]
+  in case gen_strategy f of
+    GenNaive -> setWeights f (10,10,10,10,10,10,10,10,10,10)
+    GenWeighted -> propWeights f
+    GenSequence
+      -> (propWeights f{ w_halt = w_halt f ? 120 }){ w_call = 0, w_return = 0 }
+    GenTinySSNI -> ssni f
+    g -> execW f
+    {- g | g `elem` byExec -> execW f
+    g | g `elem` variat -> execW f
+    GenByFwdExec -> execW f -}
+  where
+    propEENI = [PropEENI, PropJustProfile, PropJustProfileVariation]
+    propWeights f =
+      case prop_test f of
+        PropLLNI -> llni f
+        p | p `elem` propEENI -> eeni f
+        _ -> f -- unsupported property
+    setWeights f
+      ( w_noop', w_halt'
+      , w_add', w_push'
+      , w_pop' , w_store'
+      , w_load', w_call'
+      , w_return', w_jump')
+      = f{ w_noop = w_noop f ? w_noop', w_halt = w_halt f ? w_halt'
+         , w_add = w_add f ? w_add', w_push = w_push f ? w_push'
+         , w_pop = w_pop f ? w_pop', w_store = w_store f ? w_store'
+         , w_load = w_load f ? w_load', w_call = w_call f ? w_call'
+         , w_return = w_return f ? w_return', w_jump = w_jump f ? w_jump'
+         }
+    0 ? x = x
+    y ? _ = y
+    execW f = f{w_halt_mul = if prop_test f `elem` propEENI then 10 else 0}
+      `setWeights` ( 1, 5
+                   , 40, 300
+                   , 40, 60
+                   , 60, 40
+                   , 40, 40 )
+    eeni f = setWeights f
+      ( 40, 70
+      , 40, if starting_as f == StartInitial then 400 else 200
+      , 40, 40, 40, 40, 40, 40 )
+  -- CH: TODO: tweak this more
+  -- why is there a distinction here wrt LLNI?
+  -- is it just to account for NOOPs and HALTs which have different weights?
+    llni f = setWeights f
+      ( 1, 5
+      , 40, if starting_as f == StartInitial then 300 else 150
+      , 40, 40, 40, 40, 40, 40 )
+    ssni f = setWeights f (1, 1, 10, 10, 10, 20, 20, 10, 20, 10)
 
 -- Note [Max Tests Too Large]
 -- ~~~~~~~~~~~~~~~~~~~~~~~~~~
