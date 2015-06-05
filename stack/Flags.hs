@@ -364,7 +364,7 @@ dynFlagsDflt
               , mw_jump = 1
               , mw_call = 1
 
-              , w_halt_mul = 10
+              , w_halt_mul = 0
 
               , w_maddr = (9, 1)
               , w_push_maddr = (200, 5, 1)
@@ -414,7 +414,7 @@ finalizeFlags f =
          }
     0 ? x = x
     y ? _ = y
-    execW f = f{w_halt_mul = if prop_test f `elem` propEENI then 10 else 0}
+    execW f = f{w_halt_mul = w_halt_mul f ? if prop_test f `elem` propEENI then 10 else 0}
       `setWeights` ( 1, 5
                    , 40, 300
                    , 40, 60
