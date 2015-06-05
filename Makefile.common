@@ -2,10 +2,8 @@
 # most-recently included makefile (us) is last.
 top_level_dir = $(dir $(lastword $(MAKEFILE_LIST)))
 
-ghc_compilation_opts = -O2
-ghc_warning_opts     = -fwarn-unused-imports -fwarn-missing-signatures  \
-                       -fwarn-unused-do-bind -fwarn-incomplete-patterns \
-                       -fwarn-tabs
+ghc_compilation_opts = -O2 -outputdir=build
+ghc_warning_opts     = -fwarn-incomplete-patterns -fwarn-tabs
 ghc_include_opts     = -i$(top_level_dir)/common
 ifdef DEBUG
 ghc_debug_opts       = -rtsopts -prof -auto-all
@@ -19,7 +17,7 @@ all_ghc_opts    = $(ghc_compilation_opts) $(ghc_common_opts) $(ghc_debug_opts) $
 all : $(execs)
 
 clean :
-	rm -f *.hi *.o $(execs)
+	rm -rf build/ $(execs)
 
 print-common-ghc-opts :
 	@echo $(ghc_common_opts)
