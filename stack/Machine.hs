@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, MonoLocalBinds #-}
+    TupleSections, MonoLocalBinds, ImplicitParams, PartialTypeSignatures #-}
 
 module Machine where
 
@@ -16,6 +16,7 @@ import GenericMachine
 import Trace
 import LaTeX
 
+import ArbitraryF
 import Labels
 import Flags
 import Observable
@@ -96,9 +97,9 @@ astkLab (AData d) = lab d
 astkLab (ARet p)  = lab p
 
 -- CH: I don't think this class belongs here
-instance Flaggy DynFlags => Observable AStkElt where
+instance Observable AStkElt where
   e ~~~ e' =
-    case stk_elt_equiv getFlags of
+    case stk_elt_equiv ?f of
       TagOnTop -> -- correct version
         case (e, e') of
           (AData d, AData d') -> d ~~~ d'
@@ -126,7 +127,7 @@ instance Flaggy DynFlags => Observable AStkElt where
   shrinkV (Variation (ARet p) (ARet p'))
      = map (fmap ARet) (shrinkV (Variation p p'))
   shrinkV (v@(Variation x1 x2)) -- incorrect version
-    | stk_elt_equiv getFlags == LabelOnTop
+    | stk_elt_equiv ?f == LabelOnTop
       && astkLab x1 == H && astkLab x2 == H
     = [Variation x1 x1, Variation x2 x2]
       ++ [Variation x1' x2 | x1' <- shrinkStkEltKeepLabel x1]
@@ -135,18 +136,18 @@ instance Flaggy DynFlags => Observable AStkElt where
    where shrinkStkEltKeepLabel (AData (Labeled l x)) = AData . Labeled l <$> shrink x
          shrinkStkEltKeepLabel (ARet (Labeled l x)) = ARet . Labeled l <$> shrink x
 
-instance Flaggy DynFlags => Arbitrary AStkElt where
-  arbitrary
+-- PARAM
+instance ArbitraryF AStkElt where
+  arbitraryF
     = frequency $ [ (4,liftM AData (labeled int)) ] ++
                   [ (1,liftM ARet  (labeled ret_arbitrary)) | cally ] 
     where ret_arbitrary =
-            liftM2 (,) (if smart_ints getFlags
+            liftM2 (,) (if smart_ints ?f
                         then choose (0, 20)
                         else int) arbitrary
-          cally :: Flaggy DynFlags => Bool 
-          cally         = callsAllowed (gen_instrs getFlags)
-  shrink (AData i) = map AData $ shrink i
-  shrink (ARet p) = AData (fmap fst p) : map ARet (shrink p) 
+          cally = callsAllowed (gen_instrs ?f)
+  shrinkF (AData i) = map AData $ shrink i
+  shrinkF (ARet p) = AData (fmap fst p) : map ARet (shrink p) 
 
 -- TODO (a bit later): refine the machine so that the call stack is
 -- separate from the data stack and the return instruction (which will
@@ -167,27 +168,21 @@ instance Pretty AS where
 instance Show AS where
   show = show . pretty
 
-instance Flaggy DynFlags => Machine AS where
+instance Machine AS where
   isStep as as' = isWF as && as' == astepFn as
   step = defaultStep "TMUAbstract.AS" $ return . astepFn
   wf = wf_impl
 
-wf_impl :: Flaggy DynFlags => AS -> WFCheck
+wf_impl :: _ => AS -> WFCheck
 wf_impl as = wfChecks checks
   where
-    checks :: Flaggy DynFlags => [WFCheck]
     checks   = pc_check : instrChecks instr as
-    pc_check :: Flaggy DynFlags => WFCheck
     pc_check = iptr `isIndex`
                   aimem as `orElse` "pc out of range"
-
-    iptr :: Flaggy DynFlags => Int
     iptr  = value $ apc as
-    instr :: Flaggy DynFlags => Instr
     instr = aimem as !! iptr
 
-
-instrChecks :: Flaggy DynFlags => Instr -> AS -> [WFCheck]
+instrChecks :: _ => Instr -> AS -> [WFCheck]
 instrChecks is AS{..} = instr_checks is
   where
     instr_checks Noop     = [WF]
@@ -223,29 +218,19 @@ instrChecks is AS{..} = instr_checks is
       | otherwise
       = [IF "no return address on stack"]
     instr_checks Halt = [IF ("halt" ++ pcl)]
-      where pcl = if gen_instrs getFlags /= InstrsBasic then
+      where pcl = if gen_instrs ?f /= InstrsBasic then
                      if lab apc == L then " (low)" else " (high)"
                   else ""
 
-    if_not_basic s = if gen_instrs getFlags /= InstrsBasic then s else ""
+    if_not_basic s = if gen_instrs ?f /= InstrsBasic then s else ""
 
     stk   = takeWhile isAData astk
     stackSize n = length stk >= n `orElse` "stack underflow"
     ~(addr : ~(val:_)) = stk -- CH: can't understand this syntax, val not used anywhere
     mptr  = astkValue addr
-    variantDisallowStoreThroughHighPtr
-      = IfcVariantDisallowStoreThroughHighPtr `elem` ifcsem
-    bugPopPopsReturns
-      = IfcBugPopPopsReturns `elem` ifcsem
-    bugAllowWriteDownThroughHighPtr
-      = IfcBugAllowWriteDownThroughHighPtr `elem` ifcsem
-    bugAllowWriteDownWithHighPc
-      = IfcBugAllowWriteDownWithHighPc `elem` ifcsem
-    bugValueOrVoidOnReturn
-      = IfcBugValueOrVoidOnReturn `elem` ifcsem
-    ifcsem = readIfcSemantics getFlags
+    DerivedFlags{..} = derivedFlags ?f
 
-astepInstr :: Flaggy DynFlags => AS -> Instr -> AS
+astepInstr :: _ => AS -> Instr -> AS
 -- Just check what would hapen to AS if at the PC position we would
 -- execute the instruction 
 astepInstr as@AS{..} is =
@@ -325,46 +310,17 @@ astepInstr as@AS{..} is =
            , apc = Labeled l pc }
     
     Halt -> error "astepFn: Impossible: Can't execute Halt."
-    
-  where
-    bugPushNoTaint
-      = IfcBugPushNoTaint `elem` ifcsem
-    bugArithNoTaint
-      = IfcBugArithNoTaint `elem` ifcsem
-    bugLoadNoTaint
-      = IfcBugLoadNoTaint `elem` ifcsem
-    bugStoreNoValueTaint
-      = IfcBugStoreNoValueTaint `elem` ifcsem
-    bugStoreNoPointerTaint
-      = IfcBugStoreNoPointerTaint `elem` ifcsem
-    bugStoreNoPcTaint
-      = IfcBugStoreNoPcTaint `elem` ifcsem
-    bugJumpNoRaisePc
-      = IfcBugJumpNoRaisePc `elem` ifcsem
-    bugJumpLowerPc
-      = IfcBugJumpLowerPc `elem` ifcsem
-    bugReturnNoTaint
-      = IfcBugReturnNoTaint `elem` ifcsem
-    bugCallNoRaisePc
-      = IfcBugCallNoRaisePc `elem` ifcsem
-    variantWriteDownAsNoop
-      = IfcVariantWriteDownAsNoop `elem` ifcsem
-    bugValueOrVoidOnReturn
-      = IfcBugValueOrVoidOnReturn `elem` ifcsem
+  where DerivedFlags{..} = derivedFlags ?f
 
-    ifcsem :: Flaggy DynFlags => [IfcSemantics] 
-    ifcsem = readIfcSemantics getFlags
-
-astepFn :: Flaggy DynFlags => AS -> AS
+astepFn :: _ => AS -> AS
 astepFn as@AS{..} =
   astepInstr as (aimem !! value apc)
-  
 
 {----- Properties on the abstract semantics -----}
 
 -- DD: Exercises in Quickcheck...
 -- The program is constant along the execution of the abstract machine
-prop_prog_const :: Flaggy DynFlags => AS -> Property
+prop_prog_const :: _ => AS -> Property
 prop_prog_const as =
   shrinking shrink (500::Int) $ \n ->
     forAll (traceN as n) $ \(Trace ass) ->
@@ -372,7 +328,7 @@ prop_prog_const as =
 
 -- The stack height is constant at program points
 -- This does not hold.
-prop_stackheight :: Flaggy DynFlags => AS -> Property
+prop_stackheight :: _ => AS -> Property
 prop_stackheight as =
   shrinking shrink (500::Int) $ \n ->
     forAll (traceN as n) $ \(Trace ass) ->
@@ -384,3 +340,4 @@ prop_stackheight as =
         -- not block the semantics
         all isWF ass  ==>
         all sh_are_equal pc_lists
+

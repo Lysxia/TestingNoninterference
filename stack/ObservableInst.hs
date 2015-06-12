@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, GeneralizedNewtypeDeriving #-}
+    TupleSections, GeneralizedNewtypeDeriving, ImplicitParams #-}
 
 module ObservableInst where
 
@@ -14,17 +14,18 @@ import Flags
 import Observable
 import Instr
 
+import ArbitraryF
 import Util
 
 import Machine
 import Generation
 
-instance Flaggy DynFlags => Arbitrary AS where
-  arbitrary = genAS vary
-  shrink as = filter (/= as) . map (\(Variation as' _) -> as') . shrinkV $ join Variation as
-
 {- In this module we define and experiment with shrinking
  - Variations of Abstract Machines -}
+
+instance ArbitraryF AS where
+  arbitraryF = genAS vary
+  shrinkF as = filter (/= as) . map (\(Variation as' _) -> as') . shrinkV $ join Variation as
 
 isLowRet :: AStkElt -> Bool
 isLowRet (ARet (Labeled L _)) = True
@@ -35,10 +36,10 @@ cropTop [] = []
 cropTop (h : t) | isLowRet h = h : t
 cropTop (_ : t) = cropTop t
 
-instance Flaggy DynFlags => Observable AS where
+instance Observable AS where
   as ~~~ as' =
     lab (apc as) == lab (apc as') &&
-    case equiv getFlags of
+    case equiv ?f of
       EquivMem -> pcIs L --> equivImems && equivMems
       EquivLow -> pcIs L --> equivImems && equivMems && equivPcs && equivStks id
       EquivWrongFull -> equivImems && equivMems && equivPcs && equivStks id
@@ -51,16 +52,16 @@ instance Flaggy DynFlags => Observable AS where
           equivStks f = f (astk as) ~~~ f (astk as')
           
   vary as = 
-    case equiv getFlags of
+    case equiv ?f of
       EquivMem -> if pcIs L
                   then do aimem <- varyImem $ aimem as 
                           amem <- varyMem $ amem as 
-                          astk <- if starting_as getFlags == StartInitial
+                          astk <- if starting_as ?f == StartInitial
                                   then return []
-                                  else arbitrary -- CH: XXX: this does no smart ints!
+                                  else arbitraryF -- CH: XXX: this does no smart ints!
                           apc  <- return $ apc as
                           return AS{..}
-                  else do as' <- arbitrary
+                  else do as' <- arbitraryF
                           return as'{apc = apc as' `withLab` H}
       EquivLow -> if pcIs L 
                   then do aimem <- varyImem $ aimem as 
@@ -68,7 +69,7 @@ instance Flaggy DynFlags => Observable AS where
                           astk <- varyStack $ astk as
                           apc  <- return $ apc as
                           return AS{..}
-                  else do as' <- arbitrary
+                  else do as' <- arbitraryF
                           return as'{apc = apc as' `withLab` H}
       EquivWrongFull -> do aimem <- varyImem $ aimem as 
                            amem <- varyMem $ amem as 
@@ -80,7 +81,7 @@ instance Flaggy DynFlags => Observable AS where
       EquivFull -> do aimem <- varyImem $ aimem as 
                       amem <- varyMem $ amem as 
                       astk <- if pcIs L then varyStack $ astk as
-                              else do l <- arbitrary
+                              else do l <- arbitraryF
                                       let stackTop = filter (not . isLowRet) l
                                       stackRest <- varyStack $ cropTop $ astk as
                                       return $ stackTop ++ stackRest
@@ -89,7 +90,7 @@ instance Flaggy DynFlags => Observable AS where
     where pcIs l = lab (apc as) == l
 
           varyInt i
-            | smart_ints getFlags
+            | smart_ints ?f
             = frequency $ [ (10, length (amem as) `upfrom` 0)
                           | i `isIndex` amem as ]
                        ++ [ (10, length (aimem as) `upfrom` 0)
@@ -98,10 +99,10 @@ instance Flaggy DynFlags => Observable AS where
             | otherwise
             = int
 
-          is_not_basic = gen_instrs getFlags /= InstrsBasic
+          is_not_basic = gen_instrs ?f /= InstrsBasic
   
           varyAtom _a@(Labeled H i) =
-            case atom_equiv getFlags of
+            case atom_equiv ?f of
               LabelsObservable -> Labeled H <$> varyInt i
               LabelsNotObservable ->
                 oneof [ Labeled H <$> varyInt i
@@ -109,7 +110,7 @@ instance Flaggy DynFlags => Observable AS where
               HighEquivEverything -> labeled sint
               
           varyAtom a@(Labeled L i) =
-            case atom_equiv getFlags of
+            case atom_equiv ?f of
               LabelsObservable -> return a
               LabelsNotObservable ->
                 oneof [ return a 
@@ -124,25 +125,25 @@ instance Flaggy DynFlags => Observable AS where
           varyStkElt (AData (Labeled H i)) =
             oneof $ [ AData . Labeled H <$> varyInt i ]
                  ++ [ ARet . Labeled H <$> liftA2 (,) sint arbitrary |
-                        stk_elt_equiv getFlags == LabelOnTop ]
+                        stk_elt_equiv ?f == LabelOnTop ]
 
           varyStkElt (ARet a@(Labeled L _)) = ARet <$> pure a
           varyStkElt (ARet (Labeled H (i,r))) =
             oneof $ [ARet . Labeled H <$> liftA2 (,) (varyInt i) (vary r)]
-                 ++ [AData . Labeled H <$> sint | stk_elt_equiv getFlags == LabelOnTop ]
+                 ++ [AData . Labeled H <$> sint | stk_elt_equiv ?f == LabelOnTop ]
           
           varyInstr (Push a) = Push <$> varyAtom a
           varyInstr i        = pure i
           
-          varyMem   = if starting_as getFlags == StartInitial
+          varyMem   = if starting_as ?f == StartInitial
                       then return
                       else mapM varyAtom
           varyImem  = mapM varyInstr
-          varyStack = if starting_as getFlags == StartInitial
+          varyStack = if starting_as ?f == StartInitial
                       then const $ return []
                       else mapM varyStkElt
 
-  shrinkV _ | shrink_nothing getFlags = []
+  shrinkV _ | shrink_nothing ?f = []
   shrinkV (Variation as as') =
      shrinkV' (Variation as as')
    ++
@@ -155,11 +156,11 @@ instance Flaggy DynFlags => Observable AS where
      else []
 
    where
-     shrinkNoops = shrink_noops getFlags
+     shrinkNoops = shrink_noops ?f
      shrinkV' (Variation as as')
        = easy_shrink ++ (harder_shrink \\ easy_shrink)
        where
-         which_equiv = equiv getFlags
+         which_equiv = equiv ?f
          easy_shrink  -- applies to all equivalences
            = [ Variation as{aimem = init (aimem as)} as'{aimem = init (aimem as')}
              | length (aimem as) > 1, length (aimem as') > 1
@@ -173,16 +174,16 @@ instance Flaggy DynFlags => Observable AS where
            | L == lab (apc as) && (which_equiv == EquivMem)
            = [ Variation AS{amem=amem', aimem=aimem', astk=astk', apc=apc as}
                          AS{amem=amem'', aimem=aimem'', astk=astk'', apc=apc as'}
-             | (Variation (amem',ShrinkTailNonEmpty aimem')
-                          (amem'',ShrinkTailNonEmpty aimem''),
+             | (Variation (Flaggy amem', ShrinkTailNonEmpty aimem')
+                          (Flaggy amem'', ShrinkTailNonEmpty aimem''),
                 astk',astk'') <-
-                     shrink (Variation (amem as,ShrinkTailNonEmpty $ aimem as)
-                                       (amem as',ShrinkTailNonEmpty $ aimem as'),
+                     shrinkF (Variation (Flaggy (amem as), ShrinkTailNonEmpty $ aimem as)
+                                        (Flaggy (amem as'), ShrinkTailNonEmpty $ aimem as'),
                              astk as, astk as')
              ] ++
              -- try shrinking TWO instructions to Noop simultaneously
              [Variation as{aimem=aimem'} as'{aimem=aimem''}
-             | shrink_to_noop getFlags,
+             | shrink_to_noop ?f,
                (aimem',aimem'') <- shrink2noops (aimem as) (aimem as')]
            | L == lab (apc as) || (which_equiv == EquivWrongFull)
            = [ Variation AS{amem=amem', aimem=aimem', astk=astk', apc=apc as}
@@ -206,11 +207,11 @@ instance Flaggy DynFlags => Observable AS where
              -- Is it worth shrinking in some other completely crazy way?
            = [ Variation AS{amem=amem',  aimem=aimem',  astk=astk',  apc=apc as}
                          AS{amem=amem'', aimem=aimem'', astk=astk'', apc=apc as'}
-             |  (astk', astk'', (amem', ShrinkTailNonEmpty aimem'),
-                                (amem'',ShrinkTailNonEmpty aimem'')) <-
-                     shrink (astk as, astk as',
-                            (amem as,  ShrinkTailNonEmpty (aimem as)),
-                            (amem as', ShrinkTailNonEmpty (aimem as')))
+             |  (astk', astk'', (Flaggy amem', ShrinkTailNonEmpty aimem'),
+                                (Flaggy amem'',ShrinkTailNonEmpty aimem'')) <-
+                     shrinkF (astk as, astk as',
+                            (Flaggy (amem as),  ShrinkTailNonEmpty (aimem as)),
+                            (Flaggy (amem as'), ShrinkTailNonEmpty (aimem as')))
              ]
 
 -- shrink two instructions to Noop simultaneously
@@ -234,7 +235,7 @@ shrink2noops _aimem _aimem' = []
                                   (amem'',ShrinkTailNonEmpty aimem'',astk'') <-
                            shrinkV (Variation (amem as,ShrinkTailNonEmpty $ aimem as,astk as)
                                               (amem as',ShrinkTailNonEmpty $ aimem as',astk as')) ]
-              else if equiv getFlags /= EquivFull
+              else if equiv ?f /= EquivFull
                    then -- high PC means only choice is to shrink the
                         -- two stacks separately
                    [ Variation AS{amem=amem',  aimem=aimem',  astk=astk',  apc=apc as}
@@ -260,14 +261,14 @@ shrink2noops _aimem _aimem' = []
 newtype ShrinkHighStack = SHS [AStkElt] deriving (Show,Eq)
   -- A stack that is a prefix of a stuck up to an isLowRet element 
 
-instance Flaggy DynFlags => Arbitrary ShrinkHighStack where
-  arbitrary = SHS <$> arbitrary
+instance ArbitraryF ShrinkHighStack where
+  arbitraryF = SHS <$> arbitraryF
 
-instance Flaggy DynFlags => Observable ShrinkHighStack where
+instance Observable ShrinkHighStack where
   (SHS as) ~~~ (SHS bs) = cropTop as ~~~ cropTop bs
  
   vary (SHS as) 
-    = do { l <- arbitrary 
+    = do { l <- arbitraryF
          ; let top = filter (not . isLowRet) l 
          ; bottom <- vary (cropTop as)
          ; return (SHS (top ++ bottom)) }
@@ -279,14 +280,15 @@ instance Flaggy DynFlags => Observable ShrinkHighStack where
           -- If we shrink the label of a high return address to a low return
           -- address, then the lower portions of a stack can change
           -- independently, which is bad; hence, we filter those out.
-          [Variation (asH' ++ asL) bs | asH' <- filter (not . any isLowRet) $ shrink asH]
-       ++ [Variation as (bsH' ++ bsL) | bsH' <- filter (not . any isLowRet) $ shrink bsH]
+          [Variation (asH' ++ asL) bs | asH' <- filter (not . any isLowRet) $ shrinkF asH]
+       ++ [Variation as (bsH' ++ bsL) | bsH' <- filter (not . any isLowRet) $ shrinkF bsH]
        ++ [Variation (asH ++ asL') (bsH ++ bsL') | Variation asL' bsL' <- shrinkV $ Variation asL bsL]
 
 newtype ShrinkTailNonEmpty a = ShrinkTailNonEmpty [a] deriving (Show,Eq)
 
-instance Arbitrary a => Arbitrary (ShrinkTailNonEmpty a) where
-  arbitrary = ShrinkTailNonEmpty . getNonEmpty <$> arbitrary
+instance ArbitraryF a => ArbitraryF (ShrinkTailNonEmpty a) where
+  arbitraryF = ShrinkTailNonEmpty <$> liftM2 (:) arbitraryF arbitraryF
+--  shrinkF (ShrinkTailNonEmpty xs) = (ShrinkTailNonEmpty <$>) . filter (not . null) . shrinkF $ xs
 
 instance (Show a, Observable a) => Observable (ShrinkTailNonEmpty a) where
   (ShrinkTailNonEmpty xs) ~~~ (ShrinkTailNonEmpty ys) = xs ~~~ ys
@@ -305,3 +307,4 @@ instance (Show a, Observable a) => Observable (ShrinkTailNonEmpty a) where
   shrinkV (Variation (ShrinkTailNonEmpty []) (ShrinkTailNonEmpty [])) =
     error "ShrinkTailNonEmpty should never hold empty lists (shrinkV)"
   shrinkV v = errorShrinkV "(ShrinkTailNonEmpty a)" v
+

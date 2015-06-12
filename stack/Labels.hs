@@ -4,6 +4,8 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck
 import Control.Monad
 
+import Flags
+import ArbitraryF
 import LaTeX
 
 -- The very simple lattice we are using
@@ -17,6 +19,10 @@ instance LaTeX Label where
 instance Arbitrary Label where
   arbitrary = frequency [(1,return L),(1,return H)]
   shrink lab = [L | lab==H]
+
+instance ArbitraryF Label where
+  arbitraryF = arbitrary
+  shrinkF = shrink
 
 -- Arbitrary labeled data
 data Labeled a = Labeled {lab :: Label, value :: a}
@@ -63,3 +69,4 @@ instance Num a => Num (Labeled a) where
   abs (Labeled l m) = Labeled l (abs m)
   signum (Labeled l m) = Labeled l (signum m)
   fromInteger n = Labeled L (fromInteger n)
+

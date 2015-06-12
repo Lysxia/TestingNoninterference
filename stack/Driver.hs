@@ -1,6 +1,7 @@
 {-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances,
     RankNTypes,
-    RecordWildCards, TupleSections, ScopedTypeVariables, NamedFieldPuns #-}
+    RecordWildCards, TupleSections, ScopedTypeVariables, NamedFieldPuns,
+    ImplicitParams, PartialTypeSignatures #-}
 
 module Driver where
 
@@ -18,6 +19,7 @@ import Data.Maybe
 
 import Data.IORef
 
+import ArbitraryF
 import Flags
 import Machine
 import Generation () -- Import just Arbitrary
@@ -29,52 +31,132 @@ import System.IO.Unsafe
 
 import DriverUtils
 
+import Debug.Trace
 
--- We make the context be an implicit parameter to be
--- able to pick which flags to use per-run, as a value.
--- This allows us to QC with random configurations too.
--- It's a bit naughty (not allowed in GHC < 7.4) but
--- convenient.
+-- The default setting for flags should produce a correct machine
+dynFlagsDflt :: DynFlags
+dynFlagsDflt
+  = TMUDriver { gen_instrs       = InstrsCally
+              , gen_strategy     = GenByExec
+              , gen_instrs_range = (20,50)
+               
+              , starting_as = StartQuasiInitial
+              , equiv       = EquivFull
+              
+              , smart_ints = True
+              
+              , shrink_nothing = True
+              , shrink_to_noop = True
+              , shrink_noops   = True 
+             
+              , atom_equiv = LabelsObservable
+              , stk_elt_equiv = TagOnTop
+              
+              , ifc_semantics = "[IfcDefault]"
+              
+              , step_no    = 50
+              , timeout    = 1
+              , max_tests         = maxBound `div` 100 -- See Notes [Max Tests Too Large]
+              , max_discard_ratio = 30
+              , prop_test         = PropLLNI
+              , extrapol_mul      = 10
+              , extrapol_add      = 1000
+              , show_counterexamples  = False
+              , conf_max_call_args    = 2
+              , latex_output          = False
+              
+              , print_all_datapoints  = False
+              , run_timeout_tests     = True
 
-{- This was disabled in GHC 7.8 ...
-instance (?dfs :: DynFlags) => Flaggy TMUDriver where
-  getFlags = ?dfs
--}
+              , genSequence_wInstr = 10
+              , genSequence_add = 1
+              , genSequence_load = 1
+              , genSequence_store = 1
+              , genSequence_jump = 1
+              , genSequence_mem = 1
 
-instance Flaggy TMUDriver where
-  getFlags = unsafePerformIO $ getFlagsRef
+              -- 0 = default, set by finalizeFlags, which must be called
+              -- just after running cmdArgs
+              , w_noop = 0
+              , w_halt = 0
+              , w_add = 0
+              , w_push = 0
+              , w_pop = 0
+              , w_store = 0
+              , w_load = 0
+              , w_call = 0
+              , w_return = 0
+              , w_jump = 0
 
+              , mw_single = 10
+              , mw_load = 1
+              , mw_store = 3
+              , mw_jump = 1
+              , mw_call = 1
 
-withFlagsRef :: DynFlags -> (Flaggy DynFlags => IO a) -> IO a
-withFlagsRef fgs m
-  = do { old <- getFlagsRef
-       ; x   <- (setFlagsRef fgs >> m)
-       ; setFlagsRef old
-       ; return x
-       }
+              , w_halt_mul = 0
 
+              , w_maddr = (9, 1)
+              , w_push_maddr = (200, 5, 1)
+
+              , w_vary = (9, 1)
+              , w_extraret = (9, 1)
+
+              , w_smartInt = (1, 1, 1)
+              , w_smartInt2 = (1, 1, 4)
+
+              , w_data_ret = (5, 1)
+              , derivedFlags = noBug
+              }
+
+noBug = DerivedFlags
+  { bugArithNoTaint = False
+  , bugPushNoTaint = False
+  , bugPopPopsReturns = False
+  , bugLoadNoTaint = False
+  , bugStoreNoValueTaint = False
+  , bugStoreNoPointerTaint = False
+  , bugStoreNoPcTaint = False
+  , bugJumpNoRaisePc = False
+  , bugJumpLowerPc = False
+  , bugCallNoRaisePc = False
+  , bugReturnNoTaint = False
+  , bugValueOrVoidOnReturn = False
+  , bugAllowWriteDownThroughHighPtr = False
+  , bugAllowWriteDownWithHighPc = False
+  , variantDisallowStoreThroughHighPtr = False
+  , variantWriteDownAsNoop = False
+  }
+
+withFlags :: [IfcSemantics] -> DynFlags -> ((?f :: DynFlags) => a) -> a
+withFlags bugs f a = let ?f = deriveFlags bugs f in a
+
+withFlags' :: DynFlags -> ((?f :: DynFlags) => a) -> a
+withFlags' f a = withFlags (bugList f) f a
 
 show_some_testcases :: Int -> IO ()
 show_some_testcases n
   = do { flags <- cmdArgs dynFlagsDflt
        -- ; let ?dfs = flags
-       ; withFlagsRef flags $
+       ; withFlags [] flags $
          do { gen <- newQCGen
-            ; when (latex_output getFlags) (putStr "% ") >> print gen
+            ; when (latex_output ?f) (putStr "% ") >> print gen
 
-            ; quickCheckWith stdArgs { maxSuccess = n
-                                     , replay = Just (gen, 42)
-                                     , chatty = True } $ \(as :: AS) ->
-              whenFail (return ()) $
-              collect (show as) $
-              property True }
+            ; quickCheckWith
+              stdArgs { maxSuccess = n
+                      , replay = Just (gen, 42)
+                      , chatty = True } $
+              forAll arbitraryF $ \(as :: AS) ->
+                whenFail (return ()) $
+                  collect (show as) $
+                    property True }
        }
 
 
 
 main :: IO ()
 main = do { flags <- finalizeFlags <$> cmdArgs dynFlagsDflt
-          ; success <- and <$> mapM (do_strategy flags) (strategies flags)
+          ; success <- do_strategy flags
           ; if success then exitSuccess else exitFailure }
 
 means :: [Maybe Rational] -> (Maybe Double, Maybe Double, Maybe Double)
@@ -100,7 +182,8 @@ means xs =
   -- online Q&A: http://stats.stackexchange.com/q/37628. Also, if any mean
   -- time to failure is infinity, we just have to discard it.
 
-do_strategy f (s :: GenStrategy)
+do_strategy :: DynFlags -> IO Bool
+do_strategy f
   = do when (run_timeout_tests f) $
          putStrLn $
            if print_all_datapoints f then
@@ -110,8 +193,8 @@ do_strategy f (s :: GenStrategy)
        (success',speeds,discRates,allBugsPerSecs) <-
          unzip4 <$>
          if run_timeout_tests f
-         then mapM (do_ifc (f { gen_strategy = s })) (ifcsem f)
-         else (:[]) <$> do_ifc (f { gen_strategy = s}) undefined
+         then mapM (do_ifc f) (bugList f)
+         else (:[]) <$> runTimeOutTests f -- Kinda counterintuitive
        let success = and success'
            avSpeed = if null speeds then 0
                      else sum speeds / genericLength speeds
@@ -132,7 +215,7 @@ do_strategy f (s :: GenStrategy)
                     (show (prop_test f))
                     (show (equiv f))
                     (show (starting_as f))
-                    (show s)
+                    (show (gen_strategy f))
                     (show (smart_ints f))
                     (show_timeout (timeout f))
                     (getMaxBugs f)
@@ -148,24 +231,22 @@ do_strategy f (s :: GenStrategy)
 
 show_timeout i = show i ++"sec"
 
-do_ifc f b
+runTimeOutTests f =
+  withFlags (bugList f) f $ do
+    putStrLn $ "% Flags: "++show f
+    ior <- newIORef 0
+    (r,_) <- checkProperty ior (prop_test f) $ 365*24*60*60*10^6
+    pure . (,0,0,Nothing) $ case r of
+      Right (Success{})  -> True
+      Right (GaveUp{..}) -> numTests > 0
+      _          -> False
+
+do_ifc :: DynFlags -> IfcSemantics -> IO _
+do_ifc f bug
   | PropJustProfile <- prop_test f
-  = withFlagsRef f (profileTests >> return (True,0,0,Nothing))
+  = withFlags' f (profileTests >> return (True,0,0,Nothing))
   | PropJustProfileVariation <- prop_test f
-  = withFlagsRef f (profileVariations >> return (True,0,0,Nothing))
-
-  | not $ run_timeout_tests f
-  = do let f' = f {ifc_semantics_singleton = readIfcSemanticsList f}
-       -- let ?dfs = f'
-       withFlagsRef f' $ do
-          putStrLn $ "% Flags: "++show f'
-          ior <- newIORef 0
-          (r,_) <- checkProperty ior (prop_test f') $ 365*24*60*60*10^6
-          pure . (,0,0,Nothing) $ case r of
-            Right (Success{})  -> True
-            Right (GaveUp{..}) -> numTests > 0
-            _          -> False
-
+  = withFlags' f (profileVariations >> return (True,0,0,Nothing))
   | otherwise
   = let -- Compute MTTF in ms
         mean_time_to_failure_stats :: TestCounters -> (Maybe Rational, Maybe Rational)
@@ -184,7 +265,7 @@ do_ifc f b
         extrap_info (Right (_r,_b,_d)) = " (E)"
              -- = printf " (E, b = %d, r=%d, d=%d)" b r d
     in
-    do { counters <- action (f{ifc_semantics_singleton = [b]})
+    do { counters <- action [bug] f
        ; let gen_speed :: Double =
                 (fromIntegral (run_c counters + disc_c counters) :: Double)
                     / (fromIntegral (timeout f) :: Double)
@@ -213,11 +294,11 @@ do_ifc f b
                             printf "%0.2f" $ 1.96 * sqrt varAvg
                           Nothing -> "---"
        ; if print_all_datapoints f then do
-           putStrLn ("% " ++ show b)
+           putStrLn ("% " ++ show bug)
            mapM_ (print . (/ 1000) . fromIntegral) $ times_c counters
          else
            void $ printf "\\row{\\%s}{%s}{%s}{%s}{%d}{%s}{%s} \n"
-                       (show b)
+                       (show bug)
                        (printf "%0.0f" gen_speed :: String)
                        (printf "%0.0f\\%%" disc_rate :: String)
                        mttfStr
@@ -229,8 +310,8 @@ do_ifc f b
                        mttf)
        }
 
-strategies flags = [gen_strategy flags]
-ifcsem           = readIfcSemanticsList
+bugList = readIfcSemanticsList
 
-action :: DynFlags -> IO TestCounters
-action flags = withFlagsRef flags checkTimeoutProperty
+action :: [IfcSemantics] -> DynFlags -> IO TestCounters
+action bugs flags = withFlags bugs flags checkTimeoutProperty
+

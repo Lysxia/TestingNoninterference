@@ -1,5 +1,5 @@
 {-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections #-}
+    TupleSections, ImplicitParams, PartialTypeSignatures #-}
 
 module Generation where
 
@@ -12,6 +12,7 @@ import Data.List ( find, isInfixOf )
 
 import Util
 import GenericMachine
+import ArbitraryF
 
 import Labels
 import Flags
@@ -27,11 +28,11 @@ import Machine
  - machine generation.
  - ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ -}
 
-genAS :: Flaggy DynFlags 
+genAS :: (?f :: DynFlags)
       => (AS -> Gen AS) -- Variation generation
       -> Gen AS
 genAS vary
-  = gen_as $ gen_strategy getFlags
+  = gen_as $ gen_strategy ?f
   where gen_as GenNaive             = genNaive
         gen_as GenWeighted          = genWeighted
         gen_as GenSequence          = genSequence
@@ -64,19 +65,19 @@ Note [GenNaive]
 No cleverness here. Generate absolutely random memory/stack and
 instruction stream; but still respect the smart_ints flag
 -----------------------------------------------------------------------}
-genNaive :: Flaggy DynFlags => Gen AS
+genNaive :: (?f :: DynFlags) => Gen AS
 genNaive = mkWeighted
 
-genWeighted :: Flaggy DynFlags => Gen AS
+genWeighted :: (?f :: DynFlags) => Gen AS
 genWeighted = mkWeighted
 
-genSequence :: Flaggy DynFlags => Gen AS
+genSequence :: (?f :: DynFlags) => Gen AS
 genSequence = do
   amemSize <- sized $ \n -> choose (0,n)
-  amem <- case starting_as getFlags of
+  amem <- case starting_as ?f of
     StartInitial -> initMem
     _ -> sequence [ arbitrary | _ <- [1..amemSize] ]
-  aimemSize <- choose $ gen_instrs_range getFlags
+  aimemSize <- choose $ gen_instrs_range ?f
   let genInstrMem :: Int -> -- Current step
                      [Instr] -> -- Instructions generated so far
                      Int -> -- Maximum number of instructions
@@ -84,7 +85,7 @@ genSequence = do
       genInstrMem i acc maxSize
         | i >= maxSize = return acc
         | otherwise = do
-          let TMUDriver{..} = getFlags
+          let TMUDriver{..} = ?f
           instrs <-
             frequency $
             [ (genSequence_wInstr, (:[]) <$> genWeightedInstr gInt) ] ++
@@ -109,21 +110,21 @@ genSequence = do
 
       pushAndDo i a = [Push a, i]
       push2AndDo i a1 a2 = [Push a1, Push a2, i]
-      maxArgs = conf_max_call_args getFlags
-      cally  = callsAllowed (gen_instrs getFlags)
-      jumpy  = jumpAllowed  (gen_instrs getFlags)
+      maxArgs = conf_max_call_args ?f
+      cally  = callsAllowed (gen_instrs ?f)
+      jumpy  = jumpAllowed  (gen_instrs ?f)
 
   aimem <- genInstrMem 0 [] aimemSize
 -- PARAM
-  (astk,apcl) <- case starting_as getFlags of
+  (astk,apcl) <- case starting_as ?f of
        StartInitial      -> liftA2 (,) (pure []) (pure L)
        StartQuasiInitial -> liftA2 (,) (listOf $ AData <$> labeled gInt) (pure L)
-       StartArbitrary    -> arbitrary
+       StartArbitrary    -> arbitraryF
   return AS {apc = Labeled apcl 0, ..}
 
-mkWeighted :: Flaggy DynFlags => Gen AS
+mkWeighted :: (?f :: DynFlags) => Gen AS
 mkWeighted = do
-  aimemSize <- choose $ gen_instrs_range getFlags
+  aimemSize <- choose $ gen_instrs_range ?f
   (mem,stk,pc) <- initAS aimemSize
   let amemSize = length mem
   imem <- mapM (const $ genWeightedInstr (smartInt aimemSize amemSize)) [0..aimemSize-1]
@@ -149,7 +150,7 @@ mkWeighted = do
  where gen_stk = listOf $
  -}               
 
-genWeightedInstr :: Flaggy DynFlags => Gen Int -> Gen Instr
+genWeightedInstr :: (?f :: DynFlags) => Gen Int -> Gen Instr
 genWeightedInstr gint =
   frequency $
       [ (w_noop,    pure Noop) ] ++
@@ -165,15 +166,15 @@ genWeightedInstr gint =
     where maxArgs = conf_max_call_args
           cally   = callsAllowed gen_instrs
           jumpy   = jumpAllowed gen_instrs
-          TMUDriver{..} = getFlags
+          TMUDriver{..} = ?f
 
 -- generate valid code and data addresses more often
-smartInt :: Flaggy DynFlags => Int -> Int -> Gen Int
-smartInt = smartIntWeighted (w_smartInt getFlags)
+smartInt :: (?f :: DynFlags) => Int -> Int -> Gen Int
+smartInt = smartIntWeighted (w_smartInt ?f)
 
-smartIntWeighted :: Flaggy DynFlags => (Int,Int,Int) -> Int -> Int -> Gen Int
+smartIntWeighted :: (?f :: DynFlags) => (Int,Int,Int) -> Int -> Int -> Gen Int
 smartIntWeighted (int_weight,imem_weight,mem_weight) aimemSize amemSize
-  | smart_ints getFlags
+  | smart_ints ?f
   = frequency $
     [ (int_weight, int)
     , (mem_weight, genValidMAddr amemSize)
@@ -181,13 +182,13 @@ smartIntWeighted (int_weight,imem_weight,mem_weight) aimemSize amemSize
     [ (imem_weight, genValidIAddr aimemSize) | not_basic ]
   | otherwise
   = arbitrary
-  where not_basic = gen_instrs getFlags /= InstrsBasic
+  where not_basic = gen_instrs ?f /= InstrsBasic
 
-genValidIAddr :: Flaggy DynFlags => Int -> Gen Int
+genValidIAddr :: (?f :: DynFlags) => Int -> Gen Int
 genValidIAddr aimemSize
   = choose (0, aimemSize)
 
-genValidMAddr :: Flaggy DynFlags => Int -> Gen Int
+genValidMAddr :: (?f :: DynFlags) => Int -> Gen Int
 genValidMAddr amemSize
   = choose (0, amemSize)
 
@@ -201,21 +202,21 @@ better than GenNaive in terms of the profile of the tests (i.e. 98% of
 the programs still crash/terminate very fast), but I am keeping this
 here for reference.
 -----------------------------------------------------------------------}
-genNaiveInstrOnly :: Flaggy DynFlags => Gen AS
+genNaiveInstrOnly :: (?f :: DynFlags) => Gen AS
 genNaiveInstrOnly
-  = do { aimem_size      <- choose (gen_instrs_range getFlags)
+  = do { aimem_size      <- choose (gen_instrs_range ?f)
        ; (amem,astk,apc) <- initAS aimem_size
-       ; aimem <- replicateM aimem_size arbitrary
+       ; aimem <- replicateM aimem_size arbitraryF
        ; return AS{..} }
 
 initMem :: Gen [Atom]
 initMem = listOf . pure $ Labeled L 0
 
-initAS :: Flaggy DynFlags => Int -> Gen ([Atom],[AStkElt],Atom)
+initAS :: (?f :: DynFlags) => Int -> Gen ([Atom],[AStkElt],Atom)
 -- Generate random initial AS stack, memory, and PC.  We pass initAS the
 -- size of aimem, to be used for a well-informed selection of the
 -- contents of memory and stack.
-initAS n = case starting_as getFlags of
+initAS n = case starting_as ?f of
   StartInitial ->
     liftA3 (,,) initMem (pure []) (pure . Labeled L $ 0)
   StartQuasiInitial ->
@@ -240,16 +241,16 @@ initAS n = case starting_as getFlags of
   --   aret_rand_pair = liftA2 (,) (genValidIAddr n) arbitrary
 
 
-stkMem :: Flaggy DynFlags => Int -> Gen ([Atom], [AStkElt])
+stkMem :: (?f :: DynFlags) => Int -> Gen ([Atom], [AStkElt])
 stkMem n -- imem size
   = do { amemSize  <- sized $ \x -> choose (0,x)
        ; amem_init <- vectorOf amemSize (labeled $ smartInt n amemSize)
            -- DV: used to be: frequency [(1,int),(2,genValidIAddr n)]
-       ; let (w_data, w_ret) = w_data_ret getFlags
+       ; let (w_data, w_ret) = w_data_ret ?f
        ; astk_init <-
               listOf $ frequency $
-              [ (w_data, fmap AData (labeled $ smartIntWeighted (w_smartInt2 getFlags) n amemSize)) ] ++
-              [ (w_ret, fmap ARet  (labeled aret_rand_pair)) | callsAllowed (gen_instrs getFlags) ]
+              [ (w_data, fmap AData (labeled $ smartIntWeighted (w_smartInt2 ?f) n amemSize)) ] ++
+              [ (w_ret, fmap ARet  (labeled aret_rand_pair)) | callsAllowed (gen_instrs ?f) ]
        ; return (amem_init, astk_init) }
   where aret_rand_pair = liftA2 (,) (genValidIAddr n) arbitrary
 
@@ -295,9 +296,9 @@ not taken, so it might be important to generate code for it always,
 and not just opportunistically (this is what GenByExecBothBranches
 will do.
 -----------------------------------------------------------------------}
-genByExec :: Flaggy DynFlags => Int -> Gen AS
+genByExec :: (?f :: DynFlags) => Int -> Gen AS
 genByExec lookahead
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -306,12 +307,12 @@ genByExec lookahead
        ; (is, _mis) <- genIS total_is lookahead (init_as, replicate total_is Nothing)
        ; return $ init_as { aimem = is, apc = init_pc } }
 
-genByExecVariational :: Flaggy DynFlags 
+genByExecVariational :: (?f :: DynFlags) 
                      => Int 
                      -> (AS -> Gen AS) 
                      -> Gen AS
 genByExecVariational lookahead vary
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -334,7 +335,7 @@ genByExecVariational lookahead vary
         prefer_fst (Just i) _    = i
         prefer_fst Nothing s     = fromMaybe Noop s
 
-genIS :: Flaggy DynFlags 
+genIS :: (?f :: DynFlags) 
       => Int   -- Total instructions to generate
       -> Int   -- lookahead (in steps)
       -> (AS, [Maybe Instr]) -- Initial AS and instruction stream, in accordance with AS
@@ -376,7 +377,7 @@ genIS total_is lookahead (as_init, mis_init)
       where iptr = value (apc as)
 
 
-tryGenerate :: Flaggy DynFlags
+tryGenerate :: (?f :: DynFlags)
             => Int -- total instructions allowed
             -> Int -- slack 
             -> AS  -- current AS 
@@ -434,9 +435,9 @@ be the case that the target of a conditional jump is actually ever
 reached.
 -----------------------------------------------------------------------}
 type JmpTbl = [(Int,AS)] -- (pc,stored_state) pairs
-genByExecBothBranches :: Flaggy DynFlags => Gen AS
+genByExecBothBranches :: (?f :: DynFlags) => Gen AS
 genByExecBothBranches
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -493,9 +494,9 @@ Experimentally it seems to behave worse regarding jump tainting, although
 it achieves a much higher-rate of "normal executions" (WF and pc out of
 range). DV: This is a bit of a mystery yet to me, to be investigated ...
 ---------------------------------------------------------------------------}
-genByExecAllBranchesFwd :: Flaggy DynFlags => Gen AS
+genByExecAllBranchesFwd :: (?f :: DynFlags) => Gen AS
 genByExecAllBranchesFwd
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -566,9 +567,9 @@ genByExecAllBranchesFwd
           where iptr = value (apc as)
 
 
-genByExecAllBranchesFwd2 :: Flaggy DynFlags => Gen AS
+genByExecAllBranchesFwd2 :: (?f :: DynFlags) => Gen AS
 genByExecAllBranchesFwd2
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -647,9 +648,9 @@ genByExecAllBranchesFwd2
 
 data Execute = Execute Int
 
-genByExecAllBranchesFwd3 :: Flaggy DynFlags => Gen AS
+genByExecAllBranchesFwd3 :: (?f :: DynFlags) => Gen AS
 genByExecAllBranchesFwd3
-  = do { total_is <- choose (gen_instrs_range getFlags)
+  = do { total_is <- choose (gen_instrs_range ?f)
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -755,9 +756,9 @@ genByExecAllBranchesFwd3
 
 
 
-genByFwdExec :: Flaggy DynFlags => Gen AS
+genByFwdExec :: (?f :: DynFlags) => Gen AS
 genByFwdExec
-  = do { total_is <- choose (gen_instrs_range getFlags) -- How many instructions to make
+  = do { total_is <- choose (gen_instrs_range ?f) -- How many instructions to make
        ; (init_mem,init_stk,init_pc) <- initAS total_is
        ; let init_as = AS { astk  = init_stk
                           , amem  = init_mem
@@ -826,14 +827,14 @@ genByFwdExec
 -- have an instruction memory of the given size (where this DOESN'T count the
 -- tmmRoutine).  This means that when we generate a random instruction, we
 -- don't start at 0, but just after the length of the tmmRoutine.
-ainstr :: Flaggy DynFlags
+ainstr :: (?f :: DynFlags)
        => Int
        -> Int
        -> AS
        -> Int -- HALT weight
        -> Gen Instr
 ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
-  let TMUDriver{..} = getFlags
+  let TMUDriver{derivedFlags=DerivedFlags{..},..} = ?f
   in frequency $
     [ (w_noop,  pure Noop) ] ++
     [ (w_halt + halt_weight * w_halt_mul,  pure Halt) ] ++
@@ -853,7 +854,7 @@ ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
     [ (w_add, pure Add) | nstk >= 2 ] ++
     [ (w_push, Push <$> labeled (smartInt imem_size $ length mem)) ] ++
     [ (w_pop, pure Pop) |
-      if IfcBugPopPopsReturns `elem` ifc_semantics_singleton
+      if bugPopPopsReturns
         then not (null stk)
         else nstk >= 1 ] ++
     [ (w_store, pure Store) | nstk >= 2
@@ -867,7 +868,6 @@ ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
                                    , nstk >= if r then 1 else 0 
                                    , cally ]
   where
-    
     extra_label_checks =
       {-# SCC "extra_label_checks" #-}
       case wfChecks (instrChecks Store as) of
@@ -876,16 +876,16 @@ ainstr imem_size slack as@(AS{amem=mem, astk=stk}) halt_weight =
     
     nstk    = length $ takeWhile isAData stk
     vtop    = astkValue $ head stk
-    maxArgs = conf_max_call_args getFlags
-    cally   = callsAllowed (gen_instrs getFlags)
-    jumpy   = jumpAllowed  (gen_instrs getFlags)
+    maxArgs = conf_max_call_args ?f
+    cally   = callsAllowed (gen_instrs ?f)
+    jumpy   = jumpAllowed  (gen_instrs ?f)
 
-    prop = prop_test getFlags 
+    prop = prop_test ?f 
 
 -- Like the above, but generate multiple instructions; mostly, this is just a
 -- clever way to do interesting things with Jump, Load, and Store by placing a
 -- Push in front of them.
-ainstrs :: Flaggy DynFlags
+ainstrs :: (?f :: DynFlags)
         => Int  -- Total instructions we have to generate
         -> Int  -- Slack
         -> AS
@@ -896,7 +896,7 @@ ainstrs imem_size slack as@(AS{amem = mem, astk = stk}) halt_weight =
   --        "\nslack = " ++ show slack ++
   --        "\namem  = " ++ show mem ++ 
   --        "\nastk  = " ++ show stk) $
-  let TMUDriver{..} = getFlags
+  let TMUDriver{..} = ?f
   in frequency $
     [ (mw_single, (:[]) <$> ainstr imem_size slack as halt_weight) ] ++
     if slack <= 2 then [] else
@@ -914,10 +914,10 @@ ainstrs imem_size slack as@(AS{amem = mem, astk = stk}) halt_weight =
              ; c_ret  <- arbitrary
              ; pushAndDo (Call c_args c_ret) <$> labeled iaddr }) | cally ]
   where
-    iaddr = if smart_ints getFlags
+    iaddr = if smart_ints ?f
             then imem_size `upfrom` 0
             else int
-    maddr = let (w_maddr0, w_maddr1) = w_maddr getFlags in frequency
+    maddr = let (w_maddr0, w_maddr1) = w_maddr ?f in frequency
             [ (w_maddr0, length mem `upfrom` 0)
 -- DV: used to be like this 
 -- but this is a bug: min associates to the 
@@ -939,15 +939,15 @@ ainstrs imem_size slack as@(AS{amem = mem, astk = stk}) halt_weight =
             let vls = filter (is_wf . goodA . Labeled l) all_addresses
             in if vls == empty then []
                else [(w, elements (map (Labeled l) vls))]
-          (w0, w1, w2) = w_push_maddr getFlags
+          (w0, w1, w2) = w_push_maddr ?f
           push_maddr = frequency $
                        good_maddrs w0 L ++ good_maddrs w1 H ++ [(w2, labeled maddr)]
       in pushAndDo Store <$> push_maddr
 
     pushAndDo i a = [Push a, i]
-    maxArgs = conf_max_call_args getFlags
-    cally  = callsAllowed (gen_instrs getFlags)
-    jumpy  = jumpAllowed  (gen_instrs getFlags)
+    maxArgs = conf_max_call_args ?f
+    cally  = callsAllowed (gen_instrs ?f)
+    jumpy  = jumpAllowed  (gen_instrs ?f)
 
 -- instance Flaggy DynFlags => Arbitrary AS where
 --   arbitrary = genAS
@@ -973,17 +973,17 @@ Note [GenTinyArbitrary]
 Specialized generation for single-step noninterference.
 -----------------------------------------------------------------------}
 
-genTinySSNI :: Flaggy DynFlags => Gen AS
+genTinySSNI :: (?f :: DynFlags) => Gen AS
 genTinySSNI
-  | StartArbitrary <- starting_as getFlags
+  | StartArbitrary <- starting_as ?f
   = do { amem  <- mapM (const arbitrary) [0..2]
 -- PARAM
        ; astkSize <- frequency [(x,return x) | x <- [1..15] ]
 -- PARAM
-       ; astk  <- mapM (\_ -> oneof [arbitrary, AData <$> labeled genDataPtr])
+       ; astk  <- mapM (\_ -> oneof [arbitraryF, AData <$> labeled genDataPtr])
                   [0..(astkSize-1)]
          -- making sure there is at least one return address on the stack
-       ; let (w_extraret0, w_extraret1) = w_extraret getFlags
+       ; let (w_extraret0, w_extraret1) = w_extraret ?f
        ; extraRet <- frequency [(w_extraret0, liftM (\x->[x]) (ARet <$> arbitrary)),
                                 (w_extraret1, return [])]
 -- PARAM
@@ -994,13 +994,13 @@ genTinySSNI
                      , apc   = Labeled apcl 0 }
        ; instr1 <- ainstr' as
          -- often generate related instructions
-       ; let (w_vary0, w_vary1) = w_vary getFlags
+       ; let (w_vary0, w_vary1) = w_vary ?f
        ; instr2 <- frequency [(w_vary0, varyInstr instr1),
                               (w_vary1, ainstr' as)]
        ; return $ as { aimem = [instr1, instr2] } }
   | otherwise
   = error "Only use this generator for starting in an arbitrary state!"
-  where genDataPtr = if smart_ints getFlags
+  where genDataPtr = if smart_ints ?f
                      then choose (0,2+0)
                      else int
         -- adapted from TMUAbstractObs since I couldn't import it (circular)
@@ -1017,17 +1017,17 @@ genTinySSNI
 -- This uses an almost uniform distribution for instructions.
 -- It also doesn't enforce that jump/call targets are correct;
 -- on the contrary, they often are not (size of aimem = 1)
-ainstr' :: Flaggy DynFlags
+ainstr' :: (?f :: DynFlags)
        => AS
        -> Gen Instr
 ainstr' _as@(AS{amem=mem, astk=stk}) =
-  let TMUDriver{..} = getFlags
+  let TMUDriver{derivedFlags=DerivedFlags{..},..} = ?f
   in frequency $
     [ (w_noop, pure Noop) ] ++
     [ (w_halt, pure Halt) ] ++
     [ (w_add, pure Add) | nstk >= 2 ] ++
     [ (w_push, Push <$> lint) ] ++
-    [ (w_pop, pure Pop) | if IfcBugPopPopsReturns `elem` ifc_semantics_singleton
+    [ (w_pop, pure Pop) | if bugPopPopsReturns
                          then not (null stk)
                          else nstk >= 1 ] ++
     [ (w_store, pure Store) | nstk >= 2
@@ -1047,6 +1047,7 @@ ainstr' _as@(AS{amem=mem, astk=stk}) =
     nstk    = length $ takeWhile isAData stk
     vtop    = astkValue $ head stk
     lint    = labeled int
-    maxArgs = conf_max_call_args getFlags
-    cally   = callsAllowed (gen_instrs getFlags)
-    jumpy   = jumpAllowed (gen_instrs getFlags)
+    maxArgs = conf_max_call_args ?f
+    cally   = callsAllowed (gen_instrs ?f)
+    jumpy   = jumpAllowed (gen_instrs ?f)
+

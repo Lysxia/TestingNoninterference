@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, ImplicitParams #-}
 
 module Instr where
 
@@ -6,6 +6,7 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck
 import Control.Monad
 
+import ArbitraryF
 import Labels
 import Flags
 import Observable
@@ -88,8 +89,8 @@ data InstrKind =
   | LABELOF
   deriving (Show, Eq, Read)
 
-instance Flaggy DynFlags => Arbitrary Instr where
-  arbitrary = oneof $ [Push <$> labeled int,
+instance ArbitraryF Instr where
+  arbitraryF = oneof $ [Push <$> labeled int,
                        return Pop,
                        return Add,
                        return Load,
@@ -97,17 +98,15 @@ instance Flaggy DynFlags => Arbitrary Instr where
                        return Noop] ++
                       [return Jump | jumpAllowed gi] ++
                       (if callsAllowed gi then 
-                         [liftM2 Call (choose (0,conf_max_call_args getFlags))
+                         [liftM2 Call (choose (0,conf_max_call_args ?f))
                                       arbitrary,
                           liftM Return arbitrary]
                        else []) ++
                       [return Halt]
-    where gi :: Flaggy DynFlags => GenInstrs
-          gi = gen_instrs getFlags
+    where gi = gen_instrs ?f :: GenInstrs
 
-
-  shrink Noop = []
-  shrink i = 
+  shrinkF Noop = []
+  shrinkF i = 
     Noop :      -- Easiest way to shrink an instruction is replacing it with a Noop.
     case i of   -- Otherwise...
       Push x   -> map Push $ shrink x    
@@ -115,7 +114,7 @@ instance Flaggy DynFlags => Arbitrary Instr where
       Return True -> [Return False]
       _        -> []
 
-instance Flaggy DynFlags => Observable Instr where
+instance Observable Instr where
   Push a ~~~ Push a' = a ~~~ a'
   i ~~~ i' = i == i'
 
@@ -127,7 +126,7 @@ instance Flaggy DynFlags => Observable Instr where
 
   shrinkV (Variation Noop Noop) = []
   shrinkV (Variation i i') = 
-    (if shrink_to_noop getFlags then (Variation Noop Noop :) else id) $
+    (if shrink_to_noop ?f then (Variation Noop Noop :) else id) $
     case (i,i') of 
       (Push a,   Push a')    -> map (fmap Push) $ shrinkV (Variation a a')
       (Call a r, Call a' r') -> 
@@ -136,3 +135,4 @@ instance Flaggy DynFlags => Observable Instr where
       (Return True, Return True) ->
          [Variation (Return False) (Return False)]
       _                      -> []
+

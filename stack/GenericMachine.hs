@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, RankNTypes #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, RankNTypes, ImplicitParams, PartialTypeSignatures #-}
 
 -- Common definitions for generic "machines"
 
@@ -9,6 +9,7 @@ import Control.Monad
 import Test.QuickCheck
 import Data.Function
 import Trace
+import Flags
 
 -- Typeclass of abstract machines.  Note that the "single step
 -- relation" is implemented in two ways: (1) As a random *generator*
@@ -44,9 +45,9 @@ wfChecks ((IF reason):_) = IF reason
 wfChecks (_:cs) = wfChecks cs
 
 class Show s => Machine s where
-  isStep :: s -> s -> Bool
-  step   :: s -> Gen s
-  wf     :: s -> WFCheck
+  isStep :: (?f :: DynFlags) => s -> s -> Bool
+  step :: (?f :: DynFlags) => s -> Gen s
+  wf :: (?f :: DynFlags) => s -> WFCheck
   -- illf   :: s -> Maybe String
   -- wf     :: s -> Bool
   
@@ -54,11 +55,11 @@ class Show s => Machine s where
   --        | otherwise = Just "not well-formed"  
   -- wf = isNothing . illf
 
-isWF :: Machine s => s -> Bool
+isWF :: (Machine s, _) => s -> Bool
 isWF s | WF <- wf s = True
        | otherwise  = False
 
-defaultStep :: Machine s => String -> (s -> Gen s) -> s -> Gen s
+defaultStep :: (Machine s, _) => String -> (s -> Gen s) -> s -> Gen s
 defaultStep who fn s =
   case wf s of
     WF     -> fn s
@@ -84,27 +85,27 @@ defaultStep who fn s =
 (&&&&) = (<|>)
 infixr 2 &&&&
 
-stepUntil' :: Machine s => Int -> (s -> s -> Bool) -> s -> s -> Gen s
+stepUntil' :: (Machine s, _) => Int -> (s -> s -> Bool) -> s -> s -> Gen s
 stepUntil' 0 _ _ s1  = return s1
 stepUntil' n p s0 s1
   | p s0 s1       = return s1
   | not $ isWF s1 = return s1
   | otherwise     = stepUntil' (n - 1) p s1 =<< step s1
 
-stepUntil :: Machine s => Int -> (s -> s -> Bool) -> s -> Gen s
+stepUntil :: (Machine s, _) => Int -> (s -> s -> Bool) -> s -> Gen s
 stepUntil n p s | isWF s = stepUntil' (n - 1) p s =<< step s
 stepUntil _n _p s = return s
 
-isSteps :: Machine s => [s] -> Bool
+isSteps :: (Machine s, _) => [s] -> Bool
 isSteps css =
   and $ zipWith isStep css (drop 1 css)
 
-stepMany :: Machine s => s -> Gen s
+stepMany :: (Machine s, _) => s -> Gen s
 stepMany cs = 
   if isWF cs then stepMany =<< step cs
   else return cs
 
-stepN :: (Machine s, Monad m) => (s -> m (Maybe s)) -> s -> Int -> m [s]
+stepN :: (Machine s, Monad m, _) => (s -> m (Maybe s)) -> s -> Int -> m [s]
 stepN _st s 0 = return [s]
 stepN st s n = 
   if isWF s then do
@@ -114,10 +115,10 @@ stepN st s n =
       Just s' -> liftM (s :) $ stepN st s' (n-1)
   else return [s]
 
-traceN :: Machine s => s -> Int -> Gen (Trace s)
+traceN :: (Machine s, _) => s -> Int -> Gen (Trace s)
 traceN cs n = Trace <$> stepN (liftM Just . step) cs n
 
-traceNAbs :: Layer cs as => Int -> cs -> Int -> Gen (Trace cs)
+traceNAbs :: (Layer cs as, _) => Int -> cs -> Int -> Gen (Trace cs)
 traceNAbs maxCN cs n = Trace <$> stepN (stepUntilAbstractable maxCN) cs n
 
 -- Typeclass of a layer between two abstract machines.
@@ -148,7 +149,7 @@ class (Machine cs, Machine as) => Layer cs as | as -> cs, cs -> as where
   finishedAbstractStep :: cs -> cs -> Bool
   finishedAbstractStep _cs0 cs1 = abstractable cs1
 
-stepUntilAbstractable :: Layer cs as => Int -> cs -> Gen (Maybe cs)
+stepUntilAbstractable :: (Layer cs as, _) => Int -> cs -> Gen (Maybe cs)
 stepUntilAbstractable maxCSteps cs
   | isWF as   = Just <$> stepUntil maxCSteps finishedAbstractStep cs
   | otherwise = return Nothing
@@ -157,7 +158,7 @@ stepUntilAbstractable maxCSteps cs
 
 -- Generic properties -----------------------------------------------------
 
-prop_steps :: Machine s => s -> Property
+prop_steps :: (Machine s, _) => s -> Property
 prop_steps s =
   forAll (stepN ((Just <$>) . step) s 100) $
     collect <$> (wf . last) <*> isSteps
@@ -166,7 +167,7 @@ prop_steps s =
 -- cs`, because it's false---abstracting loses information.  And applying
 -- abstract to both sides of the equality just produces a special case of
 -- prop_roundtrip.
-prop_roundtrip :: (Layer cs as, Eq as) => as -> Bool
+prop_roundtrip :: (Layer cs as, Eq as, _) => as -> Bool
 prop_roundtrip as = abstract (concretize as) == as
 
 -- TODO: These need to participate in the testing infrastructure
@@ -176,7 +177,7 @@ prop_roundtrip as = abstract (concretize as) == as
 -- TODO: Rename this to something more sensible!!
 -- First arguments is max number of concrete steps per abstract step, and
 -- second argument is max number of abstract steps for each configuration.
-gen_prop_correct :: (Layer cs as, Testable prop, Arbitrary as) =>
+gen_prop_correct :: (Layer cs as, Testable prop, Arbitrary as, _) =>
                     Int -> Int -> Gen as ->
                     (forall prop' . Testable prop' => [cs] -> [as] -> prop' -> prop) ->
                     Property

@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleContexts, ImplicitParams, PartialTypeSignatures #-}
 
 module Observable where
 
@@ -7,6 +7,7 @@ import Test.QuickCheck
 import Control.Monad
 import Data.Function
 
+import ArbitraryF
 import LaTeX
 import Labels
 import Flags
@@ -55,30 +56,36 @@ instance Functor Variation where
 -- values in a structure to arbitrary other values; it should always
 -- be the case that liftA2 (~~~) (vary x) (pure x) is true.
 class Observable a where
-  (~~~) :: a -> a -> Bool
+  (~~~) :: (?f :: DynFlags) => a -> a -> Bool
      -- low-indistinguishable
-  vary  :: a -> Gen a
+  vary  :: (?f :: DynFlags) => a -> Gen a
      -- produces ~~~ outputs
-  shrinkV :: Variation a -> [Variation a]
+  shrinkV :: (?f :: DynFlags) => Variation a -> [Variation a]
      -- demands ~~~ inputs and produces ~~~ outputs
 
-errorShrinkV :: (Show a, Observable a) => String -> Variation a -> b
+errorShrinkV :: (Show a, Observable a, ?f :: DynFlags) => String -> Variation a -> b
 errorShrinkV inst (Variation a a') =
   error $ "shrinkV for " ++ inst ++ " received " ++ (if a ~~~ a'
                                                        then "unhandled ~~~ arguments"
                                                        else "non-~~~ arguments" ++ show a ++ "\n" ++ show a')
 
-instance (Arbitrary a, Observable a) => Arbitrary (Variation a) where
-  arbitrary = do a <- arbitrary
-                 a' <- vary a
-                 return $ Variation a a'
-  shrink = shrinkV
 
-instance (Flaggy DynFlags, Arbitrary a, Observable a) => Observable (Labeled a) where
+instance (ArbitraryF a, Observable a) => ArbitraryF (Variation a) where
+  arbitraryF = do a <- arbitraryF
+                  a' <- vary a
+                  return $ Variation a a'
+  shrinkF = shrinkV
+
+instance Observable a => Observable (Flaggy a) where
+  Flaggy a ~~~ Flaggy b = a ~~~ b
+  vary (Flaggy a) = Flaggy <$> vary a
+  shrinkV (Variation (Flaggy a) (Flaggy b)) = [ Variation (Flaggy x) (Flaggy y) | Variation x y <- shrinkV (Variation a b) ]
+
+instance (ArbitraryF a, Observable a) => Observable (Labeled a) where
   (Labeled L x) ~~~ (Labeled L y) = x ~~~ y
   (Labeled H _) ~~~ (Labeled H _) = True
   (Labeled _ x) ~~~ (Labeled _ y) =
-    case atom_equiv getFlags of
+    case atom_equiv ?f of
       LabelsObservable -> False
       LabelsNotObservable -> x ~~~ y
       HighEquivEverything -> True
@@ -94,11 +101,11 @@ instance (Flaggy DynFlags, Arbitrary a, Observable a) => Observable (Labeled a) 
       [Variation (Labeled L x) (Labeled L x),
        Variation (Labeled L x') (Labeled L x')])
    ++ 
-    [Variation (Labeled H y) (Labeled H y') | (y,y') <- shrink (x,x') ]
+    [Variation (Labeled H y) (Labeled H y') | (y,y') <- shrinkF (x,x') ]
    ++ 
-    [Variation (Labeled H y) (Labeled H y') | y <- shrink x, y' <- shrink x' ]
+    [Variation (Labeled H y) (Labeled H y') | y <- shrinkF x, y' <- shrinkF x' ]
   shrinkV (Variation (Labeled l x) (Labeled l' y)) =
-    case atom_equiv getFlags of
+    case atom_equiv ?f of
       LabelsObservable -> []
       LabelsNotObservable ->
         if l==H || l'==H then
@@ -110,11 +117,11 @@ instance (Flaggy DynFlags, Arbitrary a, Observable a) => Observable (Labeled a) 
       HighEquivEverything ->
         if l==H || l'==H then
           [Variation (Labeled L x) (Labeled L y) | x ~~~ y] ++
-          [Variation (Labeled l x') (Labeled l' y) | x' <- shrink x] ++
-          [Variation (Labeled l x) (Labeled l' y') | y' <- shrink y]
+          [Variation (Labeled l x') (Labeled l' y) | x' <- shrinkF x] ++
+          [Variation (Labeled l x) (Labeled l' y') | y' <- shrinkF y]
         else []
 
-prop_shrinkV :: (Observable a, Arbitrary a) => Variation a -> Bool 
+prop_shrinkV :: (Observable a, Arbitrary a, ?f :: DynFlags) => Variation a -> Bool 
 prop_shrinkV = all (\ (Variation v v') -> v ~~~ v') . shrinkV
 
 instance Observable Int where
@@ -163,15 +170,16 @@ instance (Observable a,Observable b,Observable c) => Observable (a,b,c) where
   shrinkV  = map (fmap $ \ (a,(b,c)) -> (a,b,c)) .
                  shrinkV . fmap (\ (a,b,c) -> (a,(b,c)))
 
-prop_observable_refl  :: Observable a => a -> Bool
-prop_observable_sym   :: (Show a, Observable a) => a -> Property 
-prop_observable_trans :: (Show a, Observable a) => a -> Property
+prop_observable_refl  :: (Observable a, _) => a -> Bool
+prop_observable_sym   :: (Show a, Observable a, _) => a -> Property 
+prop_observable_trans :: (Show a, Observable a, _) => a -> Property
 prop_observable_refl  a = a ~~~ a
 prop_observable_sym   a = forAll (vary a) $ \b -> (a ~~~ b) && (b ~~~ a)
 prop_observable_trans a = forAll (vary a) $ \b ->
                           forAll (vary b) $ \c ->
                             a ~~~ c
 
-prop_observable :: (Show a, Observable a) => a -> Property
+prop_observable :: (Show a, Observable a, _) => a -> Property
 prop_observable a = 
   forAll (vary a) (~~~ a)
+

@@ -1,5 +1,6 @@
 {-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, ScopedTypeVariables, NamedFieldPuns #-}
+    TupleSections, ScopedTypeVariables, NamedFieldPuns, ImplicitParams,
+    PartialTypeSignatures #-}
 
 module DriverUtils where
 
@@ -27,6 +28,7 @@ import Aggregate
 import Average
 import LaTeX
 
+import ArbitraryF
 import Labels
 import Flags
 import Observable
@@ -45,15 +47,13 @@ import Timeout (timeout')
 -- Wrapper around Variation AS to allow switching between Arbitrary
 -- instances more easily
 -- TODO Consider using Smart (Shrink2 _), but NOT the other way.
-newtype Var = Var (Smart (Shrink2 (Variation AS)))
-  deriving Show
+type Var = Smart (Shrink2 (Variation AS))
+
+toVar :: (?f :: DynFlags) => Int -> Variation AS -> Var
+toVar n = Smart n . Shrink2
 
 getVar :: Var -> Variation AS
-getVar (Var (Smart _ (Shrink2 v))) = v
-
-instance Flaggy DynFlags => Arbitrary Var where
-  arbitrary = Var <$> arbitrary
-  shrink (Var v) = [ Var v' | v' <- shrink v ]
+getVar (Smart _ (Shrink2 v)) = v
 
 -- This tests that at every step of the observed executions, the
 -- abstract machines are indistinguishable from each other with
@@ -64,7 +64,7 @@ instance Flaggy DynFlags => Arbitrary Var where
 -- prop_secure :: Smart (Variation AS) -> Property
 -- We have some evidence that if an execution fails, it fails before
 -- ~40 or not at all
-gen_prop_noninterference :: (Flaggy DynFlags, Testable prop)
+gen_prop_noninterference :: (Testable prop, ?f :: DynFlags)
                          => ([AS] -> a) -> (a -> a -> prop)
                          -> Var -> Property
 gen_prop_noninterference observe compare var =
@@ -75,10 +75,10 @@ gen_prop_noninterference observe compare var =
               let obAss  = observe ass
                   obAss' = observe ass'
               in 
-                whenFail (when (show_counterexamples getFlags) $
-                            (if latex_output getFlags then printLaTeX else printPlain)
+                whenFail (when (show_counterexamples ?f) $
+                            (if latex_output ?f then printLaTeX else printPlain)
                               as as' ass ass') $
-        -- ( case stat_collect getFlags of
+        -- ( case stat_collect ?f of
         --      StatWF          -> collect (wf (last ass))
         --      StatExecLengths -> collect (10 * (length ass `div` 10))
         --      StatPCCoverage  -> collect (10 * ((round $ (iptr_coverage as ass)) `div` 10))
@@ -95,7 +95,7 @@ gen_prop_noninterference observe compare var =
 -- This does not seem to have an effect. Why???
 --   shrinking shrinkNothing (steps,steps) step_prop -- step_prop (steps,steps) 
  
- where steps = step_no getFlags
+ where steps = step_no ?f
        
        -- iptr_coverage as ass =
        --     -- How many distinct PCs are execute from the generated
@@ -110,7 +110,7 @@ gen_prop_noninterference observe compare var =
        --                        _    -> s
        --                    else s) 0
 
-printPlain :: Flaggy DynFlags => AS -> AS -> [AS] -> [AS] -> IO ()
+printPlain :: (?f :: DynFlags) => AS -> AS -> [AS] -> [AS] -> IO ()
 printPlain as as' ass ass' = do
   print (zipWith Variation (aimem as) (aimem as'))
   putStrLn "--- Common execution prefix:"
@@ -149,7 +149,7 @@ printPlain as as' ass ass' = do
                 if isIndex len (aimem as) then print (aimem as !! len)
                                           else putStrLn "<eof>"
 
-printLaTeX :: Flaggy DynFlags => AS -> AS -> [AS] -> [AS] -> IO ()
+printLaTeX :: (?f :: DynFlags) => AS -> AS -> [AS] -> [AS] -> IO ()
 printLaTeX as as' ass ass' = do
   putStrLn "\\begin{tabular}{mlmlmlml}"
   putStrLn $  "  \\multicolumn{4}{mc}{"
@@ -211,7 +211,7 @@ printLaTeX as as' ass ass' = do
 
   putStrLn "\\end{tabular}"
 
-gen_prop_noninterference_observable_lists :: (Flaggy DynFlags, Observable a)
+gen_prop_noninterference_observable_lists :: (Observable a, ?f :: DynFlags)
                                           => ([AS] -> [a])
                                           -> Var -> Property
 gen_prop_noninterference_observable_lists observe =
@@ -220,13 +220,13 @@ gen_prop_noninterference_observable_lists observe =
 -- DD: For both non-interference and low-lockstep, the pc is observed.
 --     How does it combine with the flag if_labels_observable set to
 --     false?
-prop_semantic_noninterference :: Flaggy DynFlags
+prop_semantic_noninterference :: (?f :: DynFlags)
                               => Var -> Property
 prop_semantic_noninterference =
   gen_prop_noninterference_observable_lists observe 
   where observe = map head . groupBy (~~~) . map amem
 
-prop_low_lockstep :: Flaggy DynFlags
+prop_low_lockstep :: (?f :: DynFlags)
                   => Var -> Property
 prop_low_lockstep =
   gen_prop_noninterference (splitLast . filter ((== L) . lab . apc)) (~=~)
@@ -252,7 +252,7 @@ prop_low_lockstep =
     _             ~=~ ([],Nothing)  = True
     (as1:ass1,l1) ~=~ (as2:ass2,l2) = as1 ~~~ as2 && (ass1,l1) ~=~ (ass2,l2)
 
-prop_end_to_end_aux :: Flaggy DynFlags
+prop_end_to_end_aux :: (?f :: DynFlags)
                    => Bool -> Var -> Property
 prop_end_to_end_aux break =
    gen_prop_noninterference observe compare 
@@ -280,25 +280,25 @@ prop_end_to_end_aux break =
 --         compare' _ _ =  property True
             -- collect "At least one doesn't halt in L" True
 
-prop_end_to_end :: Flaggy DynFlags
+prop_end_to_end :: (?f :: DynFlags)
                    => Var -> Property
 prop_end_to_end = prop_end_to_end_aux False
 
-prop_end_to_end_broken :: Flaggy DynFlags
+prop_end_to_end_broken :: (?f :: DynFlags)
                    => Var -> Property
 prop_end_to_end_broken = prop_end_to_end_aux True
 
 
 
-prop_single_step :: Flaggy DynFlags => Var -> Property
+prop_single_step :: (?f :: DynFlags) => Var -> Property
 prop_single_step var =
   let Variation as1 as2 = getVar var in
   forAll (liftA2 (,) (step' as1) (step' as2)) $ \(mas1',mas2') ->
 --   collect (length $ filter (not . isAData) $ astk as1) $
 --   collect (head $ words $ show $ head (aimem as1)) $
     let collect _s = id in
-    whenFail (when (show_counterexamples getFlags) $
-              (if latex_output getFlags then printLaTeX else printPlain)
+    whenFail (when (show_counterexamples ?f) $
+              (if latex_output ?f then printLaTeX else printPlain)
                 as1 as2 (as1 : maybeToList mas1')
                         (as2 : maybeToList mas2')) $
     case lab $ apc as1 of
@@ -326,26 +326,25 @@ prop_single_step var =
 
 {----- Main -----}
 
--- withTimeout :: Flaggy DynFlags => IO a -> IO a
--- withTimeout c = timeout' (toInteger (tmu_timeout getFlags) * 1000000) c
+-- withTimeout :: (?f :: DynFlags) => IO a -> IO a
+-- withTimeout c = timeout' (toInteger (tmu_timeout ?f) * 1000000) c
 
 
-profileTests :: Flaggy DynFlags
-             => IO ()
+profileTests :: (?f :: DynFlags) => IO ()
 profileTests
   = do { putStrLn "% Profiling"
        ; clear
        ; gen <- newQCGen
-       ; r <- quickCheckWithResult stdArgs { maxSuccess = 30000 -- Big enough for profiling
-                                           , replay     = Just (gen, 42)
-                                           , chatty     = False } $
-              \(as :: AS) ->
-              forAll (traceN as (step_no getFlags)) $
-              \(Trace ass) ->
-                collect (show_wf as ass) $
-                Average.record (length ass) $
-                property True
-       ; if latex_output getFlags
+       ; r <- quickCheckWithResult
+           stdArgs{ maxSuccess = 30000 -- Big enough for profiling
+                  , replay     = Just (gen, 42)
+                  , chatty     = False } $
+           forAll arbitraryF $ \(as :: AS) ->
+             forAll (traceN as (step_no ?f)) $ \(Trace ass) ->
+               collect (show_wf as ass) $
+                 Average.record (length ass) $
+                   property True
+       ; if latex_output ?f
          then do { a <- average
                  ; let astr = Float.formatRealFloat Float.FFFixed (Just 2) (a-1)
                  ; putStrLn "\\ifonlylen%"
@@ -370,7 +369,7 @@ profileTests
     show_wf_nicely (IF excuse) = excuse
 
 
-isHaltingAS :: Flaggy DynFlags => AS -> Bool
+isHaltingAS :: (?f :: DynFlags) => AS -> Bool
 isHaltingAS _as@AS{..}
   | let iptr = value apc
   , iptr `isIndex` aimem
@@ -380,16 +379,17 @@ isHaltingAS _as@AS{..}
   | otherwise
   = False
 
-
-profileVariations :: Flaggy DynFlags => IO ()
+profileVariations :: (?f :: DynFlags) => IO ()
 profileVariations
   = do { putStrLn "% Profiling variations"
        ; clear
        ; gen <- newQCGen
-       ; r <- quickCheckWithResult stdArgs { maxSuccess = 30000
-                                           , replay = Just (gen, 42)
-                                           , chatty = False } prop
-       ; if latex_output getFlags
+       ; r <- quickCheckWithResult
+           stdArgs{ maxSuccess = 30000
+                  , replay = Just (gen, 42)
+                  , chatty = False }
+           $ forAll arbitraryF prop
+       ; if latex_output ?f
          then
             print_nicely r
          else
@@ -429,7 +429,7 @@ profileVariations
              ; putStrLn "\\fi%"
              }
       
-      prop = gen_prop_noninterference observe comp
+      prop = gen_prop_noninterference observe comp :: Var -> Property
       observe ass
           | l <- last ass
           , isHaltingAS l = (ass, Just l)
@@ -447,29 +447,28 @@ profileVariations
       show_wf_nicely (IF excuse) = excuse
 
 
-checkProperty :: Flaggy DynFlags => IORef Int -> PropTest -> Integer -> IO (Either Int Result,Integer)
+checkProperty :: (?f :: DynFlags) => IORef Int -> PropTest -> Integer -> IO (Either Int Result,Integer)
 -- Returns used time in microseconds and either number of tests run (until timeout) or a result
 checkProperty discard_ref pr microsecs
- = let prop = case pr of
-                
+ = let prop = propertyF $ forAll arbitraryF $ case pr of
                 PropSynopsisNonInterference
-                  -> propertyF prop_semantic_noninterference
+                  -> prop_semantic_noninterference
                 PropLLNI
-                  -> propertyF prop_low_lockstep
+                  -> prop_low_lockstep
                 PropSSNI
-                  -> propertyF prop_single_step
+                  -> prop_single_step
                 PropEENI
-                  -> propertyF prop_end_to_end
+                  -> prop_end_to_end
                 PropEENInoLow
-                  -> propertyF $ prop_end_to_end_aux True
+                  -> prop_end_to_end_aux True
                                 
                 PropJustProfile
                   -> error "Not a checkable property!"
                 PropJustProfileVariation
                   -> error "Not a checkable property!"
    in do { gen <- newQCGen
-         ; let is_chatty = show_counterexamples getFlags
-               is_latex  = latex_output getFlags
+         ; let is_chatty = show_counterexamples ?f
+               is_latex  = latex_output ?f
          ; when is_chatty $ do
              when is_latex $ putStr "% Generator: "
              print gen
@@ -478,8 +477,8 @@ checkProperty discard_ref pr microsecs
          ; r <- timeout' microsecs $
            -- withTimeout $
                 quickCheckWithResult
-                   stdArgs { maxSuccess      = max_tests         getFlags
-                           , maxDiscardRatio = max_discard_ratio getFlags
+                   stdArgs { maxSuccess      = max_tests         ?f
+                           , maxDiscardRatio = max_discard_ratio ?f
                            , replay          = Just (gen,42)
                            , chatty          = is_chatty && not is_latex }
                                                -- CH: this also hides exceptions,
@@ -513,7 +512,7 @@ checkProperty discard_ref pr microsecs
                  Just r  -> Right r
          ; return (res, diff)
          }
- where propertyF x = (if shrink_nothing getFlags then QCProp.noShrinking else id) $ property x
+ where propertyF x = (if shrink_nothing ?f then QCProp.noShrinking else id) $ property x
                                     
        discard_cb tests_run
          = QCProp.PostTest
@@ -535,7 +534,7 @@ data TestCounters
   deriving Show
 
 
-checkTimeoutProperty :: Flaggy DynFlags => IO TestCounters
+checkTimeoutProperty :: (?f :: DynFlags) => IO TestCounters
 -- Returns discards and TestCounters
 checkTimeoutProperty
   = do { disc_ref <- newIORef 0  -- discards per loop iteration
@@ -545,7 +544,7 @@ checkTimeoutProperty
                                      , disc_c = 0
                                      , times_c = []
                                      , extrapolated = Left () }
-        to_microsecs = toInteger (timeout getFlags) * 10^6
+        to_microsecs = toInteger (timeout ?f) * 10^6
 
         extrapolate total_count left_over counters
           = let bump_ratio :: Double = fromIntegral total_count / fromIntegral (total_count - left_over)
@@ -558,7 +557,7 @@ checkTimeoutProperty
 
         check_prop_loop :: IORef Int -> TestCounters -> Integer -> IO TestCounters
         check_prop_loop disc_ref counters microsecs
-          | bugs_c counters >= getMaxBugs getFlags
+          | bugs_c counters >= getMaxBugs ?f
           -- Here we can extrapolate, since we have reached maximum number of bugs before the timeout expired
           -- We should experiment with commenting this case out too ... 
           = return (extrapolate to_microsecs microsecs counters)
@@ -566,7 +565,7 @@ checkTimeoutProperty
           = return counters
           | otherwise
           = do { writeIORef disc_ref 0
-               ; (r,used_microsecs) <- checkProperty disc_ref (prop_test getFlags) microsecs
+               ; (r,used_microsecs) <- checkProperty disc_ref (prop_test ?f) microsecs
                ; real_discards <- readIORef disc_ref
                ; case r of
                     Left numTests -- Timeout while having run successfully numTests

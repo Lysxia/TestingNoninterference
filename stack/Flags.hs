@@ -1,11 +1,8 @@
-{-# LANGUAGE DeriveDataTypeable, RecordWildCards #-}
+{-# LANGUAGE DeriveDataTypeable, RecordWildCards, ImplicitParams #-}
 module Flags where
 
 import Data.Typeable
 import Data.Data
-
-import System.IO.Unsafe
-import Data.IORef
 
 data GenStrategy
   = GenNaive              -- Arbitrary memory/stack/instruction stream.
@@ -99,12 +96,12 @@ isTestableProp s
 data IfcSemantics
   = IfcDefault
       -- correct default configuration
+  | IfcBugArithNoTaint
+      -- addition and subtraction don't taint their result
   | IfcBugPushNoTaint
       -- push drops taint
   | IfcBugPopPopsReturns
       -- pop pops return addresses
-  | IfcBugArithNoTaint
-      -- addition and subtraction don't taint their result
   | IfcBugLoadNoTaint
       -- load loses the label of the memory location
   | IfcBugStoreNoValueTaint
@@ -141,40 +138,17 @@ data IfcSemantics
       -- this correct variant turns both kinds of write-downs
       -- into NoOps (instead of just stopping the machine)
 
-  deriving (Eq, Read, Show, Data, Typeable)
-
-  
+  deriving (Eq, Read, Show, Data, Typeable, Enum)
 
 allIfcBugs :: [IfcSemantics]
 -- NB: Just the bug list, no more!
-allIfcBugs
-  = [ IfcBugArithNoTaint
-    , IfcBugPushNoTaint
-    , IfcBugPopPopsReturns
-    , IfcBugLoadNoTaint
-    , IfcBugStoreNoValueTaint
-    , IfcBugStoreNoPointerTaint
-    , IfcBugAllowWriteDownThroughHighPtr
-    , IfcBugJumpNoRaisePc
-    , IfcBugJumpLowerPc
-    , IfcBugStoreNoPcTaint
-    , IfcBugAllowWriteDownWithHighPc
-    , IfcBugCallNoRaisePc
-    , IfcBugReturnNoTaint
-    , IfcBugValueOrVoidOnReturn
-    ]
+allIfcBugs = [ IfcBugArithNoTaint .. IfcBugAllowWriteDownWithHighPc ]
 
 readIfcSemanticsList :: DynFlags -> [IfcSemantics]
 -- Reads the string representing IfcSemantics
 readIfcSemanticsList df
   | ifc_semantics df == "*" = allIfcBugs
   | otherwise = read (ifc_semantics df)
-
-readIfcSemantics :: DynFlags -> [IfcSemantics]
--- Reads a parsed and cached version of IfcSemantics, which may be
--- replaced by a singleton list for generating tables of bug detection
--- times. 
-readIfcSemantics = ifc_semantics_singleton
 
 data GenInstrs
   = InstrsBasic -- Generate only very basic instructions (Add/Push/Noop/Load/Store/Halt)
@@ -240,10 +214,6 @@ data TMUDriver
              , ifc_semantics :: String
                -- A string that represents an [IfcSemantics], or "*"
                
-               -- CH: the name singleton is misleading
-             , ifc_semantics_singleton :: [IfcSemantics]
-               -- A cached version of ifc_semantics, see TMUDriver.hs
-               
                -- Other configuration settings
              , step_no               :: Int -- How many steps to test for
 
@@ -294,92 +264,61 @@ data TMUDriver
              , w_smartInt :: (Int, Int, Int)
              , w_smartInt2 :: (Int, Int, Int)
              , w_data_ret :: (Int, Int)
+             , derivedFlags :: DerivedFlags
              }
   deriving (Eq, Read, Show, Data, Typeable)
 
 type DynFlags = TMUDriver
+data DerivedFlags = DerivedFlags
+  { bugArithNoTaint :: Bool
+  , bugPushNoTaint :: Bool
+  , bugPopPopsReturns :: Bool
+  , bugLoadNoTaint :: Bool
+  , bugStoreNoValueTaint :: Bool
+  , bugStoreNoPointerTaint :: Bool
+  , bugStoreNoPcTaint :: Bool
+  , bugJumpNoRaisePc :: Bool
+  , bugJumpLowerPc :: Bool
+  , bugCallNoRaisePc :: Bool
+  , bugReturnNoTaint :: Bool
+  , bugValueOrVoidOnReturn :: Bool
+  , bugAllowWriteDownThroughHighPtr :: Bool
+  , bugAllowWriteDownWithHighPc :: Bool
+  , variantDisallowStoreThroughHighPtr :: Bool
+  , variantWriteDownAsNoop :: Bool
+  } deriving (Eq, Read, Show, Data, Typeable)
 
 getMaxBugs :: DynFlags -> Int
 getMaxBugs f = extrapol_add f + timeout f * extrapol_mul f
 
--- The default setting for flags should produce a correct machine
-dynFlagsDflt :: DynFlags
-dynFlagsDflt
-  = TMUDriver { gen_instrs       = InstrsCally
-              , gen_strategy     = GenByExec
-              , gen_instrs_range = (20,50)
-               
-              , starting_as = StartQuasiInitial
-              , equiv       = EquivFull
-              
-              , smart_ints = True
-              
-              , shrink_nothing = False
-              , shrink_to_noop = True
-              , shrink_noops   = True 
-             
-              , atom_equiv = LabelsObservable
-              , stk_elt_equiv = TagOnTop
-              
-              , ifc_semantics = "[IfcDefault]"
-              , ifc_semantics_singleton = [IfcDefault]
-              
-              , step_no    = 50
-              , timeout    = 1
-              , max_tests         = maxBound `div` 100 -- See Notes [Max Tests Too Large]
-              , max_discard_ratio = 30
-              , prop_test         = PropLLNI
-              , extrapol_mul      = 10
-              , extrapol_add      = 1000
-              , show_counterexamples  = False
-              , conf_max_call_args    = 2
-              , latex_output          = False
-              
-              , print_all_datapoints  = False
-              , run_timeout_tests     = True
-
-              , genSequence_wInstr = 10
-              , genSequence_add = 1
-              , genSequence_load = 1
-              , genSequence_store = 1
-              , genSequence_jump = 1
-              , genSequence_mem = 1
-
-              -- 0 = default, set by finalizeFlags, which must be called
-              -- just after running cmdArgs
-              , w_noop = 0
-              , w_halt = 0
-              , w_add = 0
-              , w_push = 0
-              , w_pop = 0
-              , w_store = 0
-              , w_load = 0
-              , w_call = 0
-              , w_return = 0
-              , w_jump = 0
-
-              , mw_single = 10
-              , mw_load = 1
-              , mw_store = 3
-              , mw_jump = 1
-              , mw_call = 1
-
-              , w_halt_mul = 0
-
-              , w_maddr = (9, 1)
-              , w_push_maddr = (200, 5, 1)
-
-              , w_vary = (9, 1)
-              , w_extraret = (9, 1)
-
-              , w_smartInt = (1, 1, 1)
-              , w_smartInt2 = (1, 1, 4)
-
-              , w_data_ret = (5, 1)
-              }
+deriveFlags :: [IfcSemantics] -> DynFlags -> DynFlags
+deriveFlags bugs f = f' `seq` f{derivedFlags=DerivedFlags{..}}
+  where
+  f'@[
+    bugArithNoTaint,
+    bugPushNoTaint,
+    bugPopPopsReturns,
+    bugLoadNoTaint,
+    bugStoreNoValueTaint,
+    bugStoreNoPointerTaint,
+    bugStoreNoPcTaint,
+    bugJumpNoRaisePc,
+    bugJumpLowerPc,
+    bugCallNoRaisePc,
+    bugReturnNoTaint,
+    bugValueOrVoidOnReturn,
+    bugAllowWriteDownThroughHighPtr,
+    bugAllowWriteDownWithHighPc,
+    variantDisallowStoreThroughHighPtr,
+    variantWriteDownAsNoop]
+    = map (\x -> x `elem` bugs) [IfcBugArithNoTaint .. IfcVariantWriteDownAsNoop]
 
 finalizeFlags :: DynFlags -> DynFlags
-finalizeFlags f =
+finalizeFlags = finalizeWeights
+
+-- Spaghetti
+finalizeWeights :: DynFlags -> DynFlags
+finalizeWeights f =
   let byExec = [GenByExec, GenByExec1, GenByExec2, GenByExec3, GenByExec4]
       variat = [GenVariational, GenVariational1, GenVariational2,
                 GenVariational3, GenVariational4]
@@ -467,17 +406,15 @@ finalizeFlags f =
 -- http://hackage.haskell.org/packages/archive/QuickCheck/2.5.1.1/doc/html/src/Test-QuickCheck-Test.html#quickCheckWithResult will take you there.
 
 
-the_flags_ref :: IORef DynFlags
-the_flags_ref = unsafePerformIO (newIORef dynFlagsDflt)
-
-setFlagsRef :: DynFlags -> IO ()
-setFlagsRef fgs = writeIORef the_flags_ref fgs
-
-getFlagsRef :: IO DynFlags
-getFlagsRef = readIORef the_flags_ref
-
-class Flaggy a where
-  getFlags :: a
-
-
+-- the_flags_ref :: IORef DynFlags
+-- the_flags_ref = unsafePerformIO (newIORef dynFlagsDflt)
+-- 
+-- setFlagsRef :: DynFlags -> IO ()
+-- setFlagsRef fgs = writeIORef the_flags_ref fgs
+-- 
+-- getFlagsRef :: IO DynFlags
+-- getFlagsRef = readIORef the_flags_ref
+-- 
+--class Flaggy a where
+--  getFlags :: a
 
