@@ -1,4 +1,4 @@
-{-# LANGUAGE TemplateHaskell, RankNTypes, ImplicitParams #-}
+{-# LANGUAGE TemplateHaskell, RankNTypes #-}
 module ArbitraryF ( ArbitraryF(..), Flaggy(..), Flagged(..) ) where
 
 import ArbitraryFInternal

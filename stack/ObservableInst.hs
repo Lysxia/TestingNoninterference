@@ -1,5 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, GeneralizedNewtypeDeriving, ImplicitParams #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, GeneralizedNewtypeDeriving #-}
 
 module ObservableInst where
 

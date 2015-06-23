@@ -1,4 +1,4 @@
-{-# LANGUAGE ImplicitParams, TemplateHaskell #-}
+{-# LANGUAGE TemplateHaskell #-}
 module ArbitraryFInternal where
 
 import Flags

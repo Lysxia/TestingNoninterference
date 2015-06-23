@@ -1,4 +1,4 @@
-{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, RankNTypes, ImplicitParams, PartialTypeSignatures #-}
+{-# LANGUAGE MultiParamTypeClasses, FunctionalDependencies, RankNTypes #-}
 
 -- Common definitions for generic "machines"
 

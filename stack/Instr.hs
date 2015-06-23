@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, ImplicitParams #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
 
 module Instr where
 

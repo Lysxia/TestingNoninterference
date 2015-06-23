@@ -1,6 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, ScopedTypeVariables, NamedFieldPuns, ImplicitParams,
-    PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, ScopedTypeVariables, NamedFieldPuns #-}
 
 module DriverUtils where
 

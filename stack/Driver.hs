@@ -1,7 +1,5 @@
-{-# LANGUAGE ImplicitParams, FlexibleContexts, UndecidableInstances,
-    RankNTypes,
-    RecordWildCards, TupleSections, ScopedTypeVariables, NamedFieldPuns,
-    ImplicitParams, PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, RankNTypes, ScopedTypeVariables,
+    NamedFieldPuns #-}
 
 module Driver where
 

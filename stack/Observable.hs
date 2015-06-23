@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, ImplicitParams, PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Observable where
 

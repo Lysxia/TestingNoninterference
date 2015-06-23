@@ -1,4 +1,4 @@
-{-# LANGUAGE RecordWildCards,DeriveDataTypeable #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module GenerateTablesMakefile where 
 
 import Data.Char

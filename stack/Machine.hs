@@ -1,5 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, MonoLocalBinds, ImplicitParams, PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards, MonoLocalBinds #-}
 
 module Machine where
 

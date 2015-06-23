@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveDataTypeable, RecordWildCards, ImplicitParams #-}
+{-# LANGUAGE DeriveDataTypeable #-}
 module Flags where
 
 import Data.Typeable

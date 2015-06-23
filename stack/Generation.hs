@@ -1,5 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards,
-    TupleSections, ImplicitParams, PartialTypeSignatures #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
 
 module Generation where
 
