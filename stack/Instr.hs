@@ -1,7 +1,8 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, DeriveDataTypeable #-}
 
 module Instr where
 
+import Data.Data
 import Test.QuickCheck.Gen
 import Test.QuickCheck
 import Control.Monad
@@ -64,7 +65,7 @@ data Instr =
   -- Halting
   | Halt
   
-  deriving (Show, Eq, Read)
+  deriving (Show, Eq, Read, Typeable, Data)
 
 instance LaTeX Instr where
   toLaTeX (Push   a)   = "\\ii{Push}\\;" ++ toLaTeX a

@@ -1,0 +1,369 @@
+data Label = L | H
+
+sig eqL :: Label -> Label -> Bool
+fun eqL l1 l2 = 
+    case (l1, l2) of 
+      | (L, L) -> True
+      | (H, H) -> True
+      | _ -> False
+    end 
+
+sig isLow :: Label -> Bool
+fun isLow l = eqL L l
+
+sig isHigh :: Label -> Bool
+fun isHigh l = eqL H l 
+
+sig wellFormedLabel :: Label -> Bool
+fun wellFormedLabel l = 
+    case l of 
+      | 3 % L -> True
+      | 1 % H -> True
+    end
+
+data Atom = Atom Label Int
+
+data Instr = Noop 
+           | Add 
+           | Push Atom
+           | Pop
+           | Load 
+           | Store 
+           | Jump
+           | Call Int Bool
+           | Return Bool
+           | Halt
+
+sig isHighAtom :: Atom -> Bool
+fun isHighAtom pc = 
+    let' (Atom l _) = pc in 
+    isHigh l
+
+sig indistAtom :: Atom -> Atom -> Bool
+fun indistAtom a1 a2 = 
+    let' (Atom l1 v1) = a1 in
+    let' (Atom l2 v2) = a2 in 
+    eqL l1 l2 && if isLow l1 then v1 == v2 else (inRange v1 && inRange v2)
+
+sig indistAtomList :: [Atom] -> [Atom] -> Bool
+fun indistAtomList l1 l2 = 
+    case (l1, l2) of 
+      | ([], []) -> True
+      | (a1:t1, a2:t2) -> indistAtom a1 a2 && indistAtomList t1 t2
+      | _ -> False
+    end
+
+sig indistInstr :: Instr -> Instr -> Bool
+fun indistInstr i1 i2 =
+  case (i1, i2) of 
+    | (Push a1, Push a2) -> indistAtom a1 a2
+    | (Noop, Noop) -> True
+    | (Add, Add) -> True
+    | (Pop, Pop) -> True
+    | (Load, Load) -> True
+    | (Store, Store) -> True
+    | (Jump, Jump) -> True
+    | (Call a1 True, Call a2 True) -> a1 == a2
+    | (Return True, Return True) -> True
+    | (Halt, Halt) -> True
+    | _ -> False
+  end
+
+data StkElt = Data Atom
+            | Ret  (Label, (Int, Bool))
+
+sig indistStkElt :: StkElt -> StkElt -> Bool
+fun indistStkElt s1 s2 = 
+    case (s1, s2) of 
+      | (Data d1, Data d2) -> indistAtom d1 d2
+      | (Ret (l1, (i1, True)), Ret (l2, (i2, True))) ->
+        case (l1, l2) of
+        | (H, H) -> inRange i1 && inRange i2
+        | (L, L) -> i1 == i2
+        | _ -> False
+        end
+      | _ -> False
+    end
+
+sig indistStkLow :: [StkElt] -> [StkElt] -> Bool
+fun indistStkLow s1 s2 = 
+    case (s1, s2) of 
+      | ([], []) -> True
+      | (x1 : s1', x2 : s2') -> indistStkElt x1 x2 && indistStkLow s1' s2'
+      | _ -> False
+    end
+
+sig indistStkCrop2 :: [StkElt] -> [StkElt] -> Bool
+fun indistStkCrop2 s1 s2 = 
+    case s2 of 
+      | Ret (l, _) : s2' -> 
+        case l of 
+          | L -> indistStkLow s1 s2'
+          | H -> indistStkCrop2 s1 s2'
+        end
+      | _ : s2' -> indistStkCrop2 s1 s2'
+      | [] -> indistStkLow s1 []
+    end
+
+sig indistStkCrop :: [StkElt] -> [StkElt] -> Bool
+fun indistStkCrop s1 s2 = 
+    case s1 of 
+      | Ret (l, _) : s1' -> 
+          case l of 
+            | L -> indistStkCrop2 s1' s2 
+            | H -> indistStkCrop s1' s2
+          end
+      | _ : s1' -> indistStkCrop s1' s2
+      | [] -> indistStkCrop2 [] s2
+    end
+
+sig length :: [a] -> Int -> Bool
+fun length l {n @i} = 
+    if n == 0 then 
+        case l of 
+          | [] -> True
+          | _  -> False
+        end
+    else case l of 
+           | [] -> False
+           | (x : xs) -> length xs (n-1)
+    end
+
+sig wellFormedMemory :: [Atom] -> Int -> Bool
+fun wellFormedMemory l n = 
+    if n == 0 then 
+        case l of 
+          | [] -> True
+          | _  -> False
+        end
+    else case l of 
+           | [] -> False
+           | ((Atom lab x) : xs) -> inRange x && wellFormedLabel lab 
+                                    && wellFormedMemory xs (n-1)
+    end
+    
+
+sig stackLength :: [StkElt] -> Int -> Int 
+fun stackLength stack {n @i}=
+    case stack of 
+      | [] -> n
+      | (Ret _ : _ ) -> n
+      | (Data _ : s) -> stackLength s (n+1)
+    end
+
+sig indistInstrList :: [Instr] -> [Instr] -> Bool
+fun indistInstrList i1 i2 = 
+    case (i1, i2) of 
+      | ([], []) -> True
+      | (h1:t1, h2:t2) -> indistInstr h1 h2 && indistInstrList t1 t2 
+      | _ -> False
+    end
+
+data AS = AS [Atom] [Instr] [StkElt] Atom
+
+sig inRange :: Int -> Bool
+fun inRange x = [| x | 0 <= x && x < 10 |]
+
+sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
+fun wellFormedInstr i stackSize stack = 
+    case i of 
+      | 5 % Noop -> True
+      | 10 % Add  -> stackSize >= 2
+      | 10 % Push (Atom l n) -> inRange n && wellFormedLabel l
+      | 10 % Pop  -> stackSize >= 1
+      | 10 % Load -> case stack of 
+                  | (Data (Atom _ n):_) -> [| n | 0 <= n && n < 10 |]
+                  | _ -> False
+                end
+      | 10 % Store -> stackSize >= 2 &&
+                 case stack of 
+                   | (Data (Atom _ n):_) -> [| n | 0 <= n && n < 10 |]
+                   | _ -> False
+                 end
+      | 10 % Jump -> stackSize >= 1
+      | 10 % Call n True -> [| n | n >= 0 && stackSize > n |]
+      | Call _ False -> False
+      | 10 % Return True -> case stack of 
+                    | (Data _ : Ret _ : _) -> True
+                    | _ -> False
+                  end
+      | Return False -> False
+      | 1 % Halt   -> True
+    end
+
+sig wellFormedInstrs :: [Instr] -> Int -> Int -> [StkElt] -> Bool
+fun wellFormedInstrs instrs {addr @i} stackSize stack = 
+    case instrs of 
+      | i:is -> if addr == 0 then wellFormedInstr i stackSize stack
+                else wellFormedInstrs is (addr-1) stackSize stack
+      | _ -> False
+    end
+
+data Maybe a = Just a | Nothing
+
+sig nth :: Int -> [a] -> Maybe a
+fun nth n l =
+    if n == 0 then 
+        case l of 
+          | i:_ -> Just i
+          | _ -> Nothing
+        end
+    else case l of 
+           | _:is -> nth (n-1) is 
+           | _ -> Nothing
+         end
+
+-- sig nthLoad :: Int -> [Atom] -> (Int,[Atom],[Instr], Label, [StkElt], Atom) -> Bool
+-- fun nthLoad n l rest =
+--     if n == 0 then 
+--         case l of 
+--           | Atom ldata d : _ -> 
+--              let' (len, m, is, lptr, s', pc') = rest in
+--              runsLong len (AS m is (Data (Atom (join lptr ldata) d) : s') pc')
+--           | _ -> True
+--         end
+--     else case l of 
+--            | _:is -> nthLoad (n-1) is rest
+--            | _ -> True
+--          end
+
+sig putNth :: Int -> a -> [a] -> Maybe [a] 
+fun putNth n x l = 
+    if n == 0 then Just (x : l)
+    else case l of 
+           | h:t -> case putNth (n-1) x t of 
+                      | Just l -> Just (h:l)
+                      | _ -> Nothing
+                    end
+           | [] -> Nothing
+         end
+
+sig join :: Label -> Label -> Label
+fun join l1 l2 = 
+    case l1 of 
+      | L -> l2 
+      | H -> H
+    end
+
+sig add :: Atom -> Atom -> Atom
+fun add a1 a2 = 
+    let' (Atom l1 x1) = a1 in
+    let' (Atom l2 x2) = a2 in 
+    Atom (join l1 l2) 2
+
+sig step :: Int -> AS -> Bool
+fun step len st = 
+    let' (AS m is s pc) = st in
+    let' (Atom lab addr) = pc in
+    case nth addr is of 
+    | Just i -> 
+      case i of 
+      | Noop -> runsLong len (AS m is s (Atom lab (addr+1)))
+      | Add  -> 
+        case s of 
+        | (Data a1:Data a2:s') -> 
+          runsLong len (AS m is (Data (add a1 a2):s') (Atom lab (addr+1)))
+        | _ -> True
+        end
+      | Push x -> runsLong len (AS m is (Data x:s) (Atom lab (addr+1)))
+      | Pop  -> 
+        case s of 
+        | (Data _:s') -> runsLong len (AS m is s' (Atom lab (addr+1)))
+        | _ -> True 
+        end
+      | Load ->
+        case s of 
+        | (Data a:s') -> 
+          let' (Atom lptr ptr) = a in
+          case nth ptr m of 
+          | Just (Atom ldata d) -> 
+              runsLong len (AS m is (Data (Atom (join lptr ldata) d):s') (Atom lab (addr+1)))
+          | _ -> True
+          end  
+--          nthLoad ptr m (len, m, is, lptr, s', (Atom lab (addr+1)))
+        | _ -> True
+        end
+      | Store -> 
+        case s of 
+        | (Data (Atom lptr ptr):Data x:s') -> 
+          case putNth ptr x m of 
+          | Just m' -> runsLong len (AS m' is s' (Atom lab (addr+1)))
+          | _ -> True
+          end 
+        | _ -> True
+        end 
+      | Jump -> 
+        case s of 
+        | (Data (Atom labPtr ptr):s') -> 
+          runsLong len (AS m is s' (Atom (join lab labPtr) ptr))
+        | _ -> True
+        end
+      | Call n True -> 
+        case s of 
+        | (Data (Atom labPtr ptr):s') -> 
+          case putNth n (Ret (lab, (addr+1, True))) s' of 
+          | Just s'' -> runsLong len (AS m is s'' (Atom (join labPtr lab) ptr))
+          | _ -> True 
+          end
+        | _ -> True
+        end
+      | Call _ False -> False
+      | Return True -> 
+        case s of 
+        | Data (Atom lx x) : Ret (retl, (retptr, True)) : s' ->
+          runsLong len (AS m is (Data (Atom (join lx lab) x):s') (Atom retl retptr))
+        | _ : Ret (_, (_, False)) : _ -> False
+        | _ -> True
+        end
+      | Return False -> False
+      | Halt -> True
+      end
+    | _ -> True
+    end
+
+sig runsLong :: Int -> AS -> Bool
+fun runsLong len st = 
+    if len <= 0 then True
+    else 
+      let' (AS m i s pc) = st in
+      let' (Atom lab addr) = pc in 
+      inRange addr && 
+      wellFormedInstrs i addr (stackLength s 0) s &&
+      step (len-1) (AS m i s (Atom lab addr))
+
+sig wellFormedStack :: [StkElt] -> Int -> Bool
+fun wellFormedStack st n = 
+    if n == 0 then 
+        case st of 
+          | [] -> True
+          | _  -> False
+        end
+    else case st of 
+           | [] -> False
+           | 3 % (Data (Atom l x) : xs) -> 
+              inRange x && wellFormedLabel l &&
+              wellFormedStack xs (n-1)
+           | 1 % (Ret (lab, (addr, True)) : xs) -> 
+              inRange addr && wellFormedLabel lab &&
+              wellFormedStack xs (n-1)
+           | Ret (_, (_, False)) : _ -> False
+    end
+
+sig wellFormed :: AS -> Bool
+fun wellFormed as = 
+    let' (AS mem instrs stack pc) = as in 
+    let' (Atom pcLab addr) = pc in 
+    inRange addr && wellFormedMemory mem 10 && length instrs 10 && wellFormedStack stack 5
+    && runsLong 10 (AS mem instrs stack (Atom pcLab addr))
+
+sig indistState :: AS -> AS -> Bool
+fun indistState as1 as2 = 
+    let' (AS m1 i1 s1 pc1) = as1 in
+    let' (AS m2 i2 s2 pc2) = as2 in
+    indistAtom pc1 pc2 && indistAtomList m1 m2 && indistInstrList i1 i2 
+    && if isHighAtom pc1 then indistStkCrop s1 s2 else indistStkLow s1 s2
+
+sig statePred :: AS -> AS -> Bool
+fun statePred as1 as2 = 
+    wellFormed as1 && indistState as1 as2
+    

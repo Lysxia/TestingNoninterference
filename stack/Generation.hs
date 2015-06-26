@@ -217,28 +217,13 @@ initAS :: (?f :: DynFlags) => Int -> Gen ([Atom],[AStkElt],Atom)
 -- contents of memory and stack.
 initAS n = case starting_as ?f of
   StartInitial ->
-    liftA3 (,,) initMem (pure []) (pure . Labeled L $ 0)
+    initMem <&> \mem -> (mem, [], Labeled L 0)
   StartQuasiInitial ->
-    do (stk,mem) <- stkMem n
-       pure (stk,mem,Labeled L 0)
+    stkMem n <&> \(mem, stk) -> (mem, stk, Labeled L 0)
   StartArbitrary ->
-    do (stk,mem) <- stkMem n 
+    do (mem, stk) <- stkMem n 
        pcl <- arbitrary
-       pure (stk,mem,Labeled pcl 0)
-  -- where
-  --   stkMem =
-  --     do { amemSize  <- sized $ \n -> choose (0,n)
-                        
-  --        ; amem_init <- vectorOf amemSize (labeled $ smartInt n amemSize)
-  --                       -- DV: used to be: frequency [(1,int),(2,genValidIAddr n)]
-                        
-  --        ; astk_init <-
-  --             listOf $ frequency $
-  --             [ (5, fmap AData (labeled $ smartIntWeighted (1,1,4) n amemSize)) ] ++ 
-  --             [ (1, fmap ARet  (labeled $ aret_rand_pair)) | callsAllowed (gen_instrs getFlags) ] 
-  --        ; return (amem_init, astk_init) }
-  --   aret_rand_pair = liftA2 (,) (genValidIAddr n) arbitrary
-
+       pure (mem, stk, Labeled pcl 0)
 
 stkMem :: (?f :: DynFlags) => Int -> Gen ([Atom], [AStkElt])
 stkMem n -- imem size

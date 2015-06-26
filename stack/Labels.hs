@@ -1,5 +1,7 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 module Labels where
 
+import Data.Data
 import Test.QuickCheck.Gen
 import Test.QuickCheck
 import Control.Monad
@@ -10,7 +12,7 @@ import LaTeX
 
 -- The very simple lattice we are using
 data Label = L | H
-  deriving (Eq, Ord, Read, Show)
+  deriving (Eq, Ord, Read, Show, Typeable, Data)
 
 instance LaTeX Label where
   toLaTeX L = "\\low"
@@ -26,7 +28,7 @@ instance ArbitraryF Label where
 
 -- Arbitrary labeled data
 data Labeled a = Labeled {lab :: Label, value :: a}
-  deriving (Eq, Ord, Read)
+  deriving (Eq, Ord, Read, Typeable, Data)
 
 instance Functor Labeled where
   fmap f (Labeled l a) = Labeled l (f a)

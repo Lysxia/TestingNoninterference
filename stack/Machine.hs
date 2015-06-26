@@ -1,4 +1,5 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards, MonoLocalBinds #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, RecordWildCards, MonoLocalBinds,
+  DeriveDataTypeable #-}
 
 module Machine where
 
@@ -8,6 +9,7 @@ import Control.Monad
 import Text.PrettyPrint hiding (int)
 import Data.Function
 import Data.List ( find, groupBy)
+import Data.Data
 
 import Util
 import Pretty
@@ -51,7 +53,7 @@ import Instr
 data AStkElt = AData Atom
              | ARet  (Labeled (Int,Bool))  -- (address to return to,
                                            -- whether to return a value or not)
-  deriving (Eq, Read)
+  deriving (Eq, Read, Typeable, Data)
 
 instance Show AStkElt where
   show (AData a) = show a
@@ -66,7 +68,7 @@ data AS = AS { amem  :: [Atom],        -- starting at minaddr
                aimem :: [Instr],       -- starting after alloc routine
                astk  :: [AStkElt],     -- same interpretation as in CS
                apc   :: Labeled Int }  -- ditto
-  deriving (Eq, Read)
+  deriving (Eq, Read, Typeable, Data)
 
 isAData :: AStkElt -> Bool
 isAData (AData _) = True

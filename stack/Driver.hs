@@ -22,6 +22,7 @@ import Flags
 import Machine
 import Generation () -- Import just Arbitrary
 import ObservableInst ()
+import Lucky
 
 import System.Time
 import System.Exit
@@ -149,8 +150,6 @@ show_some_testcases n
                   collect (show as) $
                     property True }
        }
-
-
 
 main :: IO ()
 main = do { flags <- finalizeFlags <$> cmdArgs dynFlagsDflt

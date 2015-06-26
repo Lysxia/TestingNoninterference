@@ -59,3 +59,6 @@ chunks :: Int -> [a] -> [[a]]
 chunks _ [] = []
 chunks n xs = let (chunk,xs') = splitAt n xs in chunk : chunks n xs'
 
+(<&>) :: Functor f => f a -> (a -> b) -> f b
+(<&>) = flip (<$>)
+infixl 1 <&>
