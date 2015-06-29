@@ -155,7 +155,7 @@ show_some_testcases n
 
 main :: IO ()
 main = do { flags <- finalizeFlags <$> cmdArgs dynFlagsDflt
-          ; let ?f = flags
+--          ; let ?f = flags
 --          ; quickCheck $ forAll asGen $ \(Variation as1 as2) -> as1 ~~~ as2
 --          ; exitSuccess
           ; success <- do_strategy flags

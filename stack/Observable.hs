@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, DeriveDataTypeable #-}
+{-# LANGUAGE FlexibleContexts, DeriveDataTypeable, CPP #-}
 
 module Observable where
 
@@ -19,15 +19,11 @@ data Variation a = Variation a a
   deriving (Eq, Typeable, Data)
 
 instance (Eq a, Show a) => Show (Variation a) where
+#ifdef SHOW
   show (Variation a a') = showDiff (show a) (show a')
--- show (Variation a a') 
---   | a == a' = show a
---   | otherwise = let (pre,l,l',post) = common (show a) (show a')
---                 in concat [pre, "{", l, "/", l', "}", post]
---   where
---     common xs ys = let (pre,  xs', ys')  = commonL False xs ys
---                        (tsop, sx', sy') = (commonL False `on` reverse) xs' ys'
---                    in (pre, reverse sx', reverse sy', reverse tsop)
+#else
+  show = error "SHOW"
+#endif
 
 instance (Eq a, LaTeX a) => LaTeX (Variation a) where
   toLaTeX (Variation a a')

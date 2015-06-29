@@ -494,7 +494,7 @@ checkProperty discard_ref pr microsecs
                                                --     which is not so good
                       (QCProp.callback (discard_cb tests_run) prop)
 
-         ; aggregateResults -- DV: What is this supposed to do here? 
+         -- ; aggregateResults -- DV: What is this supposed to do here? 
 
          ; end <- getCPUTime
                        
