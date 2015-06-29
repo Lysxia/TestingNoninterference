@@ -1,4 +1,4 @@
-{-# LANGUAGE FlexibleContexts, UndecidableInstances #-}
+{-# LANGUAGE FlexibleContexts, UndecidableInstances, LambdaCase #-}
 
 module Generation where
 
@@ -6,6 +6,7 @@ import Test.QuickCheck.Gen
 import Test.QuickCheck
 import Control.Monad
 import Control.Applicative
+import Data.Function
 import Data.Maybe
 import Data.List ( find, isInfixOf )
 
@@ -30,8 +31,7 @@ import Machine
 genAS :: (?f :: DynFlags)
       => (AS -> Gen AS) -- Variation generation
       -> Gen AS
-genAS vary
-  = gen_as $ gen_strategy ?f
+genAS vary = gen_as $ gen_strategy ?f
   where gen_as GenNaive             = genNaive
         gen_as GenWeighted          = genWeighted
         gen_as GenSequence          = genSequence

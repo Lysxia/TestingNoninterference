@@ -190,7 +190,7 @@ data TMUDriver
                gen_instrs       :: GenInstrs
              
              , gen_strategy     :: GenStrategy
-               
+             , gen_lucky        :: Bool
              , gen_instrs_range :: (Int,Int)
                   -- (x,y) <- gen_instrs_range
                   -- Generate an arbitrary number of instructions >= x and <= y

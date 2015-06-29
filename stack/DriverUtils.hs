@@ -26,6 +26,7 @@ import Aggregate
 import Average
 import LaTeX
 
+import Lucky
 import ArbitraryF
 import Labels
 import Flags
@@ -444,11 +445,21 @@ profileVariations
       show_wf_nicely WF = "well-formed"
       show_wf_nicely (IF excuse) = excuse
 
+asGen :: (?f :: DynFlags) => Gen (Variation AS)
+asGen =
+  if gen_lucky ?f
+  then
+    -- Generator written in Luck
+    maybeGen $
+      case (gen_strategy ?f, gen_instrs ?f, starting_as ?f, equiv ?f) of
+        (GenByExec, InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivFull
+        _ -> error "Unsupported Lucky generator."
+  else arbitraryF
 
 checkProperty :: (?f :: DynFlags) => IORef Int -> PropTest -> Integer -> IO (Either Int Result,Integer)
 -- Returns used time in microseconds and either number of tests run (until timeout) or a result
 checkProperty discard_ref pr microsecs
- = let prop = propertyF $ forAll arbitraryF $ case pr of
+ = let prop = propertyF $ forAll (toVar 0 <$> asGen) $ case pr of
                 PropSynopsisNonInterference
                   -> prop_semantic_noninterference
                 PropLLNI

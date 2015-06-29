@@ -21,6 +21,7 @@ import ArbitraryF
 import Flags
 import Machine
 import Generation () -- Import just Arbitrary
+import Observable
 import ObservableInst ()
 import Lucky
 
@@ -37,6 +38,7 @@ dynFlagsDflt :: DynFlags
 dynFlagsDflt
   = TMUDriver { gen_instrs       = InstrsCally
               , gen_strategy     = GenByExec
+              , gen_lucky        = False
               , gen_instrs_range = (20,50)
                
               , starting_as = StartQuasiInitial
@@ -153,6 +155,9 @@ show_some_testcases n
 
 main :: IO ()
 main = do { flags <- finalizeFlags <$> cmdArgs dynFlagsDflt
+          ; let ?f = flags
+--          ; quickCheck $ forAll asGen $ \(Variation as1 as2) -> as1 ~~~ as2
+--          ; exitSuccess
           ; success <- do_strategy flags
           ; if success then exitSuccess else exitFailure }
 
@@ -294,7 +299,7 @@ do_ifc f bug
            putStrLn ("% " ++ show bug)
            mapM_ (print . (/ 1000) . fromIntegral) $ times_c counters
          else
-           void $ printf "\\row{\\%s}{%s}{%s}{%s}{%d}{%s}{%s} \n"
+           void $ printf "\\row{\\%s}{%s}{%s}{%s}{%d}{%s}{%s} %%%d\n"
                        (show bug)
                        (printf "%0.0f" gen_speed :: String)
                        (printf "%0.0f\\%%" disc_rate :: String)
@@ -302,6 +307,7 @@ do_ifc f bug
                        (bugs_c counters)
                        varStr
                        acc95Str
+                       (run_c counters)
        ; return (True, gen_speed,
                        disc_rate,
                        mttf)

@@ -63,7 +63,7 @@ fun indistInstr i1 i2 =
     | (Load, Load) -> True
     | (Store, Store) -> True
     | (Jump, Jump) -> True
-    | (Call a1 True, Call a2 True) -> a1 == a2
+    | (Call a1 True, Call a2 True) -> inRange a1 && a1 == a2
     | (Return True, Return True) -> True
     | (Halt, Halt) -> True
     | _ -> False
@@ -79,7 +79,7 @@ fun indistStkElt s1 s2 =
       | (Ret (l1, (i1, True)), Ret (l2, (i2, True))) ->
         case (l1, l2) of
         | (H, H) -> inRange i1 && inRange i2
-        | (L, L) -> i1 == i2
+        | (L, L) -> inRange i1 && i1 == i2
         | _ -> False
         end
       | _ -> False
@@ -96,9 +96,9 @@ fun indistStkLow s1 s2 =
 sig indistStkCrop2 :: [StkElt] -> [StkElt] -> Bool
 fun indistStkCrop2 s1 s2 = 
     case s2 of 
-      | Ret (l, _) : s2' -> 
+      | Ret (l, (i, b)) : s2' -> 
         case l of 
-          | L -> indistStkLow s1 s2'
+          | L -> indistStkLow s1 (Ret (l, (i, b)) : s2')
           | H -> indistStkCrop2 s1 s2'
         end
       | _ : s2' -> indistStkCrop2 s1 s2'
@@ -108,9 +108,9 @@ fun indistStkCrop2 s1 s2 =
 sig indistStkCrop :: [StkElt] -> [StkElt] -> Bool
 fun indistStkCrop s1 s2 = 
     case s1 of 
-      | Ret (l, _) : s1' -> 
+      | Ret (l, (i, b)) : s1' -> 
           case l of 
-            | L -> indistStkCrop2 s1' s2 
+            | L -> indistStkCrop2 (Ret (l, (i, b)) : s1') s2 
             | H -> indistStkCrop s1' s2
           end
       | _ : s1' -> indistStkCrop s1' s2
