@@ -7,6 +7,7 @@ import Test.QuickCheck
 import Test.QuickCheck.Random
 
 import Control.Monad
+import Control.Applicative
 import Control.Arrow()
 import Data.List (genericLength, unzip4)
 
@@ -317,4 +318,3 @@ bugList = readIfcSemanticsList
 
 action :: [IfcSemantics] -> DynFlags -> IO TestCounters
 action bugs flags = withFlags bugs flags checkTimeoutProperty
-
