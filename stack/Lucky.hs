@@ -15,7 +15,7 @@ maybeGen g = fix $ \g' -> g >>= maybe g' return
 
 genByExec_Arbitrary_EquivLow :: Gen (Maybe (Variation AS))
 genByExec_Arbitrary_EquivLow
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/PicoGenExec.core") "statePred@28" asGen2
+  = fmap (uncurry Variation) <$> $(mkGenQ "luck/PicoGenExec.core") "statePred@26" asGen2
 
 genByExec_QInit_EquivLow :: Gen (Maybe (Variation AS))
 genByExec_QInit_EquivLow

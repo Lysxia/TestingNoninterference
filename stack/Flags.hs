@@ -356,7 +356,7 @@ finalizeWeights f =
     y ? _ = y
     execW f = f{w_halt_mul = w_halt_mul f ? if prop_test f `elem` propEENI then 10 else 0}
       `setWeights` ( 1, 5
-                   , 40, 300
+                   , 40, 100
                    , 40, 60
                    , 60, 40
                    , 40, 40 )
@@ -369,7 +369,7 @@ finalizeWeights f =
   -- is it just to account for NOOPs and HALTs which have different weights?
     llni f = setWeights f
       ( 1, 5
-      , 40, if starting_as f == StartInitial then 300 else 150
+      , 40, 100
       , 40, 40, 40, 40, 40, 40 )
     ssni f = setWeights f (1, 1, 10, 10, 10, 20, 20, 10, 20, 10)
 
