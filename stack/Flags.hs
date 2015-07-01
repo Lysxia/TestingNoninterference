@@ -352,8 +352,7 @@ finalizeWeights f =
          , w_load = w_load f ? w_load', w_call = w_call f ? w_call'
          , w_return = w_return f ? w_return', w_jump = w_jump f ? w_jump'
          }
-    0 ? x = x
-    y ? _ = y
+    y ? x = if y < 0 then x else y
     execW f = f{w_halt_mul = w_halt_mul f ? if prop_test f `elem` propEENI then 10 else 0}
       `setWeights` ( 1, 5
                    , 40, 100
@@ -362,7 +361,7 @@ finalizeWeights f =
                    , 40, 40 )
     eeni f = setWeights f
       ( 40, 70
-      , 40, if starting_as f == StartInitial then 400 else 200
+      , 40, 100
       , 40, 40, 40, 40, 40, 40 )
   -- CH: TODO: tweak this more
   -- why is there a distinction here wrt LLNI?

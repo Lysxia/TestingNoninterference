@@ -79,16 +79,16 @@ dynFlagsDflt
 
               -- 0 = default, set by finalizeFlags, which must be called
               -- just after running cmdArgs
-              , w_noop = 0
-              , w_halt = 0
-              , w_add = 0
-              , w_push = 0
-              , w_pop = 0
-              , w_store = 0
-              , w_load = 0
-              , w_call = 0
-              , w_return = 0
-              , w_jump = 0
+              , w_noop = -1
+              , w_halt = -1
+              , w_add = -1
+              , w_push = -1
+              , w_pop = -1
+              , w_store = -1
+              , w_load = -1
+              , w_call = -1
+              , w_return = -1
+              , w_jump = -1
 
               , mw_single = 10
               , mw_load = 1
@@ -96,7 +96,7 @@ dynFlagsDflt
               , mw_jump = 1
               , mw_call = 1
 
-              , w_halt_mul = 0
+              , w_halt_mul = -1
 
               , w_maddr = (9, 1)
               , w_push_maddr = (200, 5, 1)

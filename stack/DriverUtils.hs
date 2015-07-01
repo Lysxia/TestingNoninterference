@@ -338,7 +338,7 @@ profileTests
            stdArgs{ maxSuccess = 30000 -- Big enough for profiling
                   , replay     = Just (gen, 42)
                   , chatty     = False } $
-           forAll arbitraryF $ \(as :: AS) ->
+           forAll (asGen <&> \(Variation as _) -> as) $ \(as :: AS) ->
              forAll (traceN as (step_no ?f)) $ \(Trace ass) ->
                collect (show_wf as ass) $
                  Average.record (length ass) $

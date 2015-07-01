@@ -167,26 +167,40 @@ fun inRange x = [| x | 0 <= x && x < 10 |]
 sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
 fun wellFormedInstr i stackSize stack = 
     case i of 
-      | 5 % Noop -> True
-      | 10 % Add  -> stackSize >= 2
-      | 10 % Push (Atom l n) -> inRange n && wellFormedLabel l
-      | 10 % Pop  -> stackSize >= 1
-      | 10 % Load -> case stack of 
-                  | (Data (Atom _ n):_) -> inRange n
-                  | _ -> False
-                end
-      | 10 % Store -> stackSize >= 2 &&
-                 case stack of 
-                   | (Data (Atom _ n):_) -> inRange n
-                   | _ -> False
-                 end
-      | 10 % Jump -> stackSize >= 1
-      | 10 % Call n True -> [| n | n >= 0 && stackSize > n |]
+      | 1 % Noop -> True
+      | 10 % Add  ->
+          case stack of
+          | Data _ : Data _ : _ -> True
+          | _ -> False
+          end
+      | 20 % Push (Atom l n) -> inRange n && wellFormedLabel l
+      | 10 % Pop  ->
+          case stack of
+          | Data _ : _ -> True
+          | _ -> False
+          end
+      | 10 % Load ->
+          case stack of 
+          | (Data (Atom _ n):_) -> inRange n
+          | _ -> False
+          end
+      | 10 % Store ->
+          case stack of 
+            | Data (Atom _ n) : Data a : _ -> inRange n
+            | _ -> False
+          end
+      | 10 % Jump ->
+          case stack of
+            | Data (Atom _ n) : _ -> inRange n
+            | _ -> False
+          end
+      | 10 % Call n True -> [| n | 0 <= n && n < stackSize |]
       | Call _ False -> False
-      | 10 % Return True -> case stack of 
-                    | (Data _ : Ret _ : _) -> True
-                    | _ -> False
-                  end
+      | 10 % Return True ->
+          case stack of 
+            | (Data _ : Ret _ : _) -> True
+            | _ -> False
+          end
       | Return False -> False
       | 1 % Halt   -> True
     end
@@ -340,7 +354,7 @@ fun wellFormedStack st n =
         end
     else case st of 
            | [] -> False
-           | 3 % (Data (Atom l x) : xs) -> 
+           | 5 % (Data (Atom l x) : xs) -> 
               inRange x && wellFormedLabel l &&
               wellFormedStack xs (n-1)
            | 1 % (Ret (lab, (addr, True)) : xs) -> 

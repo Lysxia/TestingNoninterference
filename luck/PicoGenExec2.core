@@ -167,9 +167,9 @@ fun inRange x = [| x | 0 <= x && x < 10 |]
 sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
 fun wellFormedInstr i stackSize stack = 
     case i of 
-      | 5 % Noop -> True
+      | 1 % Noop -> True
       | 10 % Add  -> stackSize >= 2
-      | 10 % Push (Atom l n) -> inRange n && wellFormedLabel l
+      | 20 % Push (Atom l n) -> inRange n && wellFormedLabel l
       | 10 % Pop  -> stackSize >= 1
       | 10 % Load -> case stack of 
                   | (Data (Atom _ n):_) -> inRange n
