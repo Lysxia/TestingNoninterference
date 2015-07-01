@@ -190,6 +190,7 @@ data TMUDriver
                gen_instrs       :: GenInstrs
              
              , gen_strategy     :: GenStrategy
+             -- Overrides gen_strategy
              , gen_lucky        :: Bool
              , gen_instrs_range :: (Int,Int)
                   -- (x,y) <- gen_instrs_range
