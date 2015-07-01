@@ -353,7 +353,9 @@ sig wellFormed :: AS -> Bool
 fun wellFormed as = 
     let' (AS mem instrs stack pc) = as in 
     let' (Atom pcLab addr) = pc in 
-    inRange addr && wellFormedMemory mem 10 && length instrs 10 && wellFormedStack stack 5
+    -- QuasiInitial
+    addr == 0 && isLow pcLab &&
+    wellFormedMemory mem 10 && length instrs 10 && wellFormedStack stack 5
     && runsLong 10 (AS mem instrs stack (Atom pcLab addr))
 
 sig indistState :: AS -> AS -> Bool
@@ -361,7 +363,7 @@ fun indistState as1 as2 =
     let' (AS m1 i1 s1 pc1) = as1 in
     let' (AS m2 i2 s2 pc2) = as2 in
     indistAtom pc1 pc2 && indistAtomList m1 m2 && indistInstrList i1 i2 
-    && if isHighAtom pc1 then indistStkCrop s1 s2 else indistStkLow s1 s2
+    && indistStkLow s1 s2
 
 sig statePred :: AS -> AS -> Bool
 fun statePred as1 as2 = 

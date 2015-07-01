@@ -452,7 +452,10 @@ asGen =
     -- Generator written in Luck
     maybeGen $
       case (gen_strategy ?f, gen_instrs ?f, starting_as ?f, equiv ?f) of
-        (GenByExec, InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivFull
+        (GenByExec, InstrsCally, StartArbitrary, EquivFull) -> genByExec_Arbitrary_EquivLow
+        (GenByExec, InstrsCally, StartArbitrary, EquivLow) -> genByExec_Arbitrary_EquivLow
+        (GenByExec, InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivLow
+        (GenByExec, InstrsCally, StartQuasiInitial, EquivLow) -> genByExec_QInit_EquivLow
         _ -> error "Unsupported Lucky generator."
   else arbitraryF
 

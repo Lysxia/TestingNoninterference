@@ -13,7 +13,11 @@ import Machine
 maybeGen :: Gen (Maybe a) -> Gen a
 maybeGen g = fix $ \g' -> g >>= maybe g' return
 
-genByExec_QInit_EquivFull :: Gen (Maybe (Variation AS))
-genByExec_QInit_EquivFull
+genByExec_Arbitrary_EquivLow :: Gen (Maybe (Variation AS))
+genByExec_Arbitrary_EquivLow
   = fmap (uncurry Variation) <$> $(mkGenQ "luck/PicoGenExec.core") "statePred@28" asGen2
+
+genByExec_QInit_EquivLow :: Gen (Maybe (Variation AS))
+genByExec_QInit_EquivLow
+  = fmap (uncurry Variation) <$> $(mkGenQ "luck/PicoGenExec2.core") "statePred@28" asGen2
 
