@@ -38,6 +38,7 @@ import Generation () -- Import just Arbitrary
 import ObservableInst ()
 
 import Timeout (timeout')
+import Debug.Trace
 
 {----------------------------- Properties to test -----------------------------}
 
@@ -447,15 +448,29 @@ profileVariations
 
 asGen :: (?f :: DynFlags) => Gen (Variation AS)
 asGen =
-  if gen_lucky ?f
+  let TMUDriver{..} = ?f
+      DerivedFlags{..} = derivedFlags in
+  if gen_lucky
   then
     -- Generator written in Luck
     maybeGen $
-      case (gen_instrs ?f, starting_as ?f, equiv ?f) of
-        (InstrsCally, StartArbitrary, EquivFull) -> genByExec_Arbitrary_EquivLow
-        (InstrsCally, StartArbitrary, EquivLow) -> genByExec_Arbitrary_EquivLow
-        (InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivLow
-        (InstrsCally, StartQuasiInitial, EquivLow) -> genByExec_QInit_EquivLow
+      case (gen_instrs, starting_as, equiv) of
+--        (InstrsCally, StartArbitrary, EquivFull) -> genByExec_Arbitrary_EquivLow
+--        (InstrsCally, StartArbitrary, EquivLow) -> genByExec_Arbitrary_EquivLow
+--        (InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivLow
+        (InstrsCally, StartQuasiInitial, EquivLow)
+          | bugArithNoTaint -> genByExec_QInit_EquivLow_BugArith
+          | bugPushNoTaint -> genByExec_QInit_EquivLow_BugPush
+          | bugLoadNoTaint -> genByExec_QInit_EquivLow_BugLoad
+          | bugPopPopsReturns -> genByExec_QInit_EquivLow_BugPop
+          | bugStoreNoValueTaint -> genByExec_QInit_EquivLow_BugStoreValue
+          | bugStoreNoPointerTaint -> genByExec_QInit_EquivLow_BugStorePointer
+          | bugStoreNoPcTaint -> genByExec_QInit_EquivLow_BugStorePC
+          | bugJumpNoRaisePc -> genByExec_QInit_EquivLow_BugJumpNoRaise
+          | bugJumpLowerPc -> genByExec_QInit_EquivLow_BugJumpLower
+          | bugCallNoRaisePc -> genByExec_QInit_EquivLow_BugCall
+          | bugReturnNoTaint -> genByExec_QInit_EquivLow_BugReturn
+          | otherwise -> genByExec_QInit_EquivLow
         _ -> error "Unsupported Lucky generator."
   else arbitraryF
 

@@ -1,0 +1,20 @@
+#!/bin/sh
+MAIN=./dist/build/stack/stack
+INSTRS=Cally
+PROP=LLNI
+EQUIV=Full
+START=QuasiInitial
+STRATEGY=ByExec
+TIMEOUT=1
+set -x
+$MAIN \
+  --gen-instrs=Instrs$INSTRS \
+  --ifc-semantics="*" \
+  --prop-test=Prop$PROP \
+  --equiv=Equiv$EQUIV \
+  --starting-as=Start$START \
+  --gen-strategy=Gen$STRATEGY \
+  --shrink-nothing \
+  --timeout=$TIMEOUT \
+  --latex-output \
+

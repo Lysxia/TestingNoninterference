@@ -1,3 +1,9 @@
+#define STACKLENGTH 10
+#define MEMLENGTH 10
+#define PROGLENGTH 10
+#define RANGE 10
+#define RUNLENGTH 10
+
 data Label = L | H
 
 sig eqL :: Label -> Label -> Bool
@@ -162,48 +168,7 @@ fun indistInstrList i1 i2 =
 data AS = AS [Atom] [Instr] [StkElt] Atom
 
 sig inRange :: Int -> Bool
-fun inRange x = [| x | 0 <= x && x < 10 |]
-
-sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
-fun wellFormedInstr i stackSize stack = 
-    case i of 
-      | 1 % Noop -> True
-      | 10 % Add  ->
-          case stack of
-          | Data _ : Data _ : _ -> True
-          | _ -> False
-          end
-      | 20 % Push (Atom l n) -> inRange n && wellFormedLabel l
-      | 10 % Pop  ->
-          case stack of
-          | Data _ : _ -> True
-          | _ -> False
-          end
-      | 10 % Load ->
-          case stack of 
-          | (Data (Atom _ n):_) -> inRange n
-          | _ -> False
-          end
-      | 10 % Store ->
-          case stack of 
-            | Data (Atom _ n) : Data a : _ -> inRange n
-            | _ -> False
-          end
-      | 10 % Jump ->
-          case stack of
-            | Data (Atom _ n) : _ -> inRange n
-            | _ -> False
-          end
-      | 10 % Call n True -> [| n | 0 <= n && n < stackSize |]
-      | Call _ False -> False
-      | 10 % Return True ->
-          case stack of 
-            | (Data _ : Ret _ : _) -> True
-            | _ -> False
-          end
-      | Return False -> False
-      | 1 % Halt   -> True
-    end
+fun inRange x = [| x | 0 <= x && x < RANGE |]
 
 sig wellFormedInstrs :: [Instr] -> Int -> Int -> [StkElt] -> Bool
 fun wellFormedInstrs instrs {addr @i} stackSize stack = 
@@ -263,7 +228,59 @@ sig add :: Atom -> Atom -> Atom
 fun add a1 a2 = 
     let' (Atom l1 x1) = a1 in
     let' (Atom l2 x2) = a2 in 
-    Atom (join l1 l2) 2
+#ifdef BUGARITH
+    Atom L (x1 + x2)
+#else
+    Atom (join l1 l2) (x1 + x2)
+#endif
+
+#define MEM(n) [| n | 0 <= n && n < MEMLENGTH |]
+#define PROG(n) [| n | 0 <= n && n < PROGLENGTH |]
+
+sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
+fun wellFormedInstr i stackSize stack = 
+    case i of 
+      | 1 % Noop -> True
+      | 40 % Add  ->
+          case stack of
+          | Data _ : Data _ : _ -> True
+          | _ -> False
+          end
+      | 100 % Push (Atom l n) -> inRange n && wellFormedLabel l
+      | 40 % Pop  ->
+#ifdef BUGPOP
+          True
+#else
+          case stack of
+          | Data _ : _ -> True
+          | _ -> False
+          end
+#endif
+      | 40 % Load ->
+          case stack of 
+          | (Data (Atom _ n):_) -> MEM(n)
+          | _ -> False
+          end
+      | 40 % Store ->
+          case stack of 
+            | Data (Atom _ n) : Data a : _ -> MEM(n)
+            | _ -> False
+          end
+      | 40 % Jump ->
+          case stack of
+            | Data (Atom _ n) : _ -> PROG(n)
+            | _ -> False
+          end
+      | 40 % Call n True -> [| n | 0 <= n && n < stackSize |]
+      | Call _ False -> False
+      | 40 % Return True ->
+          case stack of 
+            | (Data _ : Ret _ : _) -> True
+            | _ -> False
+          end
+      | Return False -> False
+      | 5 % Halt   -> True
+    end
 
 sig step :: Int -> AS -> Bool
 fun step len st = 
@@ -279,10 +296,16 @@ fun step len st =
           runsLong len (AS m is (Data (add a1 a2):s') (Atom lab (addr+1)))
         | _ -> True
         end
-      | Push x -> runsLong len (AS m is (Data x:s) (Atom lab (addr+1)))
+      | Push x ->
+#ifdef BUGPUSH
+        let' Atom l n = x in
+        runsLong len (AS m is (Data (Atom L n):s) (Atom lab (addr+1)))
+#else
+        runsLong len (AS m is (Data x:s) (Atom lab (addr+1)))
+#endif
       | Pop  -> 
-        case s of 
-        | (Data _:s') -> runsLong len (AS m is s' (Atom lab (addr+1)))
+        case s of -- wellFormedInstr checks that no data is popped
+        | _ : s' -> runsLong len (AS m is s' (Atom lab (addr+1)))
         | _ -> True 
         end
       | Load ->
@@ -291,7 +314,16 @@ fun step len st =
           let' (Atom lptr ptr) = a in
           case nth ptr m of 
           | Just (Atom ldata d) -> 
-              runsLong len (AS m is (Data (Atom (join lptr ldata) d):s') (Atom lab (addr+1)))
+              runsLong len
+                (AS
+                  m
+                  is
+#ifdef BUGLOAD
+                  (Data (Atom ldata d):s')
+#else
+                  (Data (Atom (join lptr ldata) d):s')
+#endif
+                  (Atom lab (addr+1)))
           | _ -> True
           end  
 --          nthLoad ptr m (len, m, is, lptr, s', (Atom lab (addr+1)))
@@ -299,8 +331,16 @@ fun step len st =
         end
       | Store -> 
         case s of 
-        | (Data (Atom lptr ptr):Data x:s') -> 
-          case putNth ptr x m of 
+        | (Data (Atom lptr ptr):Data (Atom l n):s') -> 
+#ifdef BUGSTOREVALUE
+          case putNth ptr (Atom L n) m of
+#elif defined(BUGSTOREPOINTER)
+          case putNth ptr (Atom (join lab l) n) m of
+#elif defined(BUGSTOREPC)
+          case putNth ptr (Atom (join lptr l) n) m of
+#else
+          case putNth ptr (Atom (join (join lptr lab) l) n) m of 
+#endif
           | Just m' -> runsLong len (AS m' is s' (Atom lab (addr+1)))
           | _ -> True
           end 
@@ -309,14 +349,32 @@ fun step len st =
       | Jump -> 
         case s of 
         | (Data (Atom labPtr ptr):s') -> 
-          runsLong len (AS m is s' (Atom (join lab labPtr) ptr))
+          runsLong len
+            (AS
+              m
+              is
+              s'
+#ifdef BUGJUMPNORAISE
+              (Atom lab ptr)
+#elif defined(BUGJUMPLOWER)
+              (Atom labPtr ptr)
+#else
+              (Atom (join lab labPtr) ptr)
+#endif
+            )
         | _ -> True
         end
       | Call n True -> 
         case s of 
         | (Data (Atom labPtr ptr):s') -> 
           case putNth n (Ret (lab, (addr+1, True))) s' of 
-          | Just s'' -> runsLong len (AS m is s'' (Atom (join labPtr lab) ptr))
+          | Just s'' -> runsLong len (AS m is s''
+#ifdef BUGCALL
+              (Atom labPtr ptr)
+#else
+              (Atom (join labPtr lab) ptr)
+#endif
+            )
           | _ -> True 
           end
         | _ -> True
@@ -325,7 +383,13 @@ fun step len st =
       | Return True -> 
         case s of 
         | Data (Atom lx x) : Ret (retl, (retptr, True)) : s' ->
-          runsLong len (AS m is (Data (Atom (join lx lab) x):s') (Atom retl retptr))
+          runsLong len (AS m is
+#ifdef BUGRETURN
+            (Data (Atom lx x) : s')
+#else
+            (Data (Atom (join lx lab) x):s')
+#endif
+            (Atom retl retptr))
         | _ : Ret (_, (_, False)) : _ -> False
         | _ -> True
         end
@@ -367,17 +431,30 @@ sig wellFormed :: AS -> Bool
 fun wellFormed as = 
     let' (AS mem instrs stack pc) = as in 
     let' (Atom pcLab addr) = pc in 
-    inRange addr && wellFormedMemory mem 10 && length instrs 10 && wellFormedStack stack 5
-    && runsLong 10 (AS mem instrs stack (Atom pcLab addr))
+#ifdef STARTANY
+    inRange addr &&
+#else
+    addr == 0 && isLow pcLab &&
+#endif
+    wellFormedMemory mem MEMLENGTH &&
+    length instrs PROGLENGTH &&
+    wellFormedStack stack STACKLENGTH &&
+    runsLong RUNLENGTH (AS mem instrs stack (Atom pcLab addr))
 
 sig indistState :: AS -> AS -> Bool
 fun indistState as1 as2 = 
     let' (AS m1 i1 s1 pc1) = as1 in
     let' (AS m2 i2 s2 pc2) = as2 in
     indistAtom pc1 pc2 && indistAtomList m1 m2 && indistInstrList i1 i2 
+#ifdef EQUIVFULL
+    -- Full
     && if isHighAtom pc1 then indistStkCrop s1 s2 else indistStkLow s1 s2
+#else
+    -- Low, does the same as EQUIVFULL is STARTANY is *not* defined.
+    && indistStkLow s1 s2
+#endif
 
 sig statePred :: AS -> AS -> Bool
 fun statePred as1 as2 = 
     wellFormed as1 && indistState as1 as2
-    
+

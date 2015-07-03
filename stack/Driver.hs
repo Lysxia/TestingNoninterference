@@ -300,7 +300,7 @@ do_ifc f bug
            putStrLn ("% " ++ show bug)
            mapM_ (print . (/ 1000) . fromIntegral) $ times_c counters
          else
-           void $ printf "\\row{\\%s}{%s}{%s}{%s}{%d}{%s}{%s} %%%d\n"
+           void $ printf "\\row{\\%s}{%s}{%s}{%s}{%d}{%s}{%s} %%%d %0.4f\n"
                        (show bug)
                        (printf "%0.0f" gen_speed :: String)
                        (printf "%0.0f\\%%" disc_rate :: String)
@@ -309,6 +309,7 @@ do_ifc f bug
                        varStr
                        acc95Str
                        (run_c counters)
+                       (fromIntegral (bugs_c counters) / fromIntegral (run_c counters) :: Double)
        ; return (True, gen_speed,
                        disc_rate,
                        mttf)
