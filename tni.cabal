@@ -12,8 +12,7 @@ build-type:          Simple
 extra-source-files:  README.md
 cabal-version:       >=1.10
 data-files:
-  luck/PicoGenExec.core
-  luck/PicoGenExec2.core
+  luck/PicoGenExec.cpp
 
 library
   hs-source-dirs: common

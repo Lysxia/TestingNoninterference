@@ -98,7 +98,7 @@ dynFlagsDflt
 
               , w_halt_mul = -1
 
-              , w_maddr = (9, 1)
+              , w_maddr = (1, 9)
               , w_push_maddr = (200, 5, 1)
 
               , w_vary = (9, 1)

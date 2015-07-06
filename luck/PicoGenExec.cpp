@@ -1,8 +1,12 @@
+(* To be preprocessed with gcc -E -P -o PicoGenExec.core *)
 #define STACKLENGTH 10
 #define MEMLENGTH 10
 #define PROGLENGTH 10
 #define RANGE 10
 #define RUNLENGTH 10
+
+#define MEM(n) [| n | 0 <= n && (n < MEMLENGTH {1} || {9} n < 3) |]
+#define PROG(n) [| n | 0 <= n && n < PROGLENGTH |]
 
 data Label = L | H
 
@@ -26,6 +30,16 @@ fun wellFormedLabel l =
       | 3 % L -> True
       | 1 % H -> True
     end
+
+sig labelLeq :: Label -> Label -> Bool
+fun labelLeq l m =
+  case l of
+  | H -> case m of
+         | H -> True
+         | L -> False
+         end
+  | L -> True
+  end
 
 data Atom = Atom Label Int
 
@@ -170,10 +184,33 @@ data AS = AS [Atom] [Instr] [StkElt] Atom
 sig inRange :: Int -> Bool
 fun inRange x = [| x | 0 <= x && x < RANGE |]
 
+fun wellFormedAtom a =
+  let' Atom l n = a in
+  inRange n && wellFormedLabel l
+
+fun wellFormedMultiInstr i j stackSize stack =
+  case i of
+  | 1 % Push (Atom l n) ->
+    wellFormedLabel l &&
+      case j of
+      | 1 % Load -> MEM(n) && True
+      | 3 % Store -> MEM(n) && stackSize > 0
+      | 1 % Jump -> PROG(n) && True
+      | 1 % Call m True -> PROG(n) && [|m| 0 <= m && m < stackSize|]
+      | _ -> False
+      end
+  | 0 % _ -> False
+  end
+
 sig wellFormedInstrs :: [Instr] -> Int -> Int -> [StkElt] -> Bool
 fun wellFormedInstrs instrs {addr @i} stackSize stack = 
     case instrs of 
-      | i:is -> if addr == 0 then wellFormedInstr i stackSize stack
+      | i:is -> if addr == 0 then
+                  (wellFormedInstr i stackSize stack {10} || {6}
+                   case is of
+                   | [] -> False
+                   | j : _ -> wellFormedMultiInstr i j stackSize stack
+                   end)
                 else wellFormedInstrs is (addr-1) stackSize stack
       | _ -> False
     end
@@ -234,9 +271,6 @@ fun add a1 a2 =
     Atom (join l1 l2) (x1 + x2)
 #endif
 
-#define MEM(n) [| n | 0 <= n && n < MEMLENGTH |]
-#define PROG(n) [| n | 0 <= n && n < PROGLENGTH |]
-
 sig wellFormedInstr :: Instr -> Int -> [StkElt] -> Bool
 fun wellFormedInstr i stackSize stack = 
     case i of 
@@ -263,7 +297,7 @@ fun wellFormedInstr i stackSize stack =
           end
       | 40 % Store ->
           case stack of 
-            | Data (Atom _ n) : Data a : _ -> MEM(n)
+            | Data (Atom l n) : Data a : _ -> MEM(n)
             | _ -> False
           end
       | 40 % Jump ->
@@ -332,6 +366,17 @@ fun step len st =
       | Store -> 
         case s of 
         | (Data (Atom lptr ptr):Data (Atom l n):s') -> 
+          case nth ptr m of
+          | Just (Atom l' n') ->
+#ifndef BUGWDOWNHIGHPTR
+            labelLeq l' lptr &&
+#endif
+#ifndef BUGWDOWNHIGHPC
+            labelLeq lab lptr &&
+#endif
+            True
+          | Nothing -> False
+          end &&
 #ifdef BUGSTOREVALUE
           case putNth ptr (Atom L n) m of
 #elif defined(BUGSTOREPOINTER)
