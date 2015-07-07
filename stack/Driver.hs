@@ -28,6 +28,7 @@ import Lucky
 
 import System.Time
 import System.Exit
+import System.IO
 import System.IO.Unsafe
 
 import DriverUtils
@@ -311,6 +312,7 @@ do_ifc f bug
                        (bugs_c counters)
                        (run_c counters)
                        (fromIntegral (bugs_c counters) / fromIntegral (run_c counters) :: Double)
+       ; hFlush stdout
        ; return (True, gen_speed,
                        disc_rate,
                        mttf)

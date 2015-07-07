@@ -5,8 +5,8 @@ define({{MEMLENGTH}}, 10) dnl
 define({{PROGLENGTH}}, 10) dnl
 define({{RANGE}}, 10) dnl MAX(PROGLENGTH, MEMLENGTH)
 define({{RUNLENGTH}}, 10) dnl
-dnl
-define({{MEM}}, {{[| $1 | 0 <= $1 && ($1 < MEMLENGTH {1} || {9} $1 < 3) |]}}) dnl
+define({{MEM}}, {{[| $1 | 0 <= $1 && $1 < MEMLENGTH |]}}) dnl
+dnl define({{MEM}}, {{[| $1 | 0 <= $1 && ($1 < MEMLENGTH {1} || {9} $1 < 3) |]}}) dnl
 define({{PROG}}, {{[| $1 | 0 <= $1 && $1 < PROGLENGTH |]}}) dnl
 dnl
 data Label = L | H

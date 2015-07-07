@@ -3,11 +3,12 @@ MAIN=./dist/build/stack/stack
 INSTRS=Cally
 PROP=LLNI
 EQUIV=Low
-START=QuasiInit
+START=QuasiInitial
 TIMEOUT=300
 set -x
 DATE=`date +%y%m%d-%H%M%S`
-uname -n
+LOGFILE=./stack/scripts/lucky/qinit/low/run.log-$DATE-`uname -n`
+echo $@ >> $LOGFILE
 $MAIN \
   --gen-instrs=Instrs$INSTRS \
   --ifc-semantics="*" \
@@ -17,4 +18,5 @@ $MAIN \
   --timeout=$TIMEOUT \
   --latex-output \
   --gen-lucky \
-  $@
+  $@ | tee $LOGFILE
+

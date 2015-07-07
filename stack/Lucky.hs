@@ -27,7 +27,7 @@ genByExec_QInit_EquivLow
 
 genByExec_QInit_EquivLow_BugArith :: GMVA
 genByExec_QInit_EquivLow_BugArith
-  = fmap (uncurry Variation) <$> $(mkBoundedGenQ 1000 "luck/core/PicoGenExec-DBUGARITH.core") luckyItem asGen2
+  = fmap (uncurry Variation) <$> $(mkGenQ "luck/core/PicoGenExec-DBUGARITH.core") luckyItem asGen2
 
 genByExec_QInit_EquivLow_BugPush :: GMVA
 genByExec_QInit_EquivLow_BugPush
