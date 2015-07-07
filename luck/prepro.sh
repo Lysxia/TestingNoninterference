@@ -1,5 +1,5 @@
 #!/bin/sh
-set -x
+set +x
 GENDIR=core/
 mkdir -p $GENDIR
 BASENAME=PicoGenExec

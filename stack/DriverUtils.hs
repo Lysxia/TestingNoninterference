@@ -336,7 +336,7 @@ profileTests
        ; clear
        ; gen <- newQCGen
        ; r <- quickCheckWithResult
-           stdArgs{ maxSuccess = 30000 -- Big enough for profiling
+           stdArgs{ maxSuccess = 3000 -- Big enough for profiling
                   , replay     = Just (gen, 42)
                   , chatty     = False } $
            forAll (asGen <&> \(Variation as _) -> as) $ \(as :: AS) ->
