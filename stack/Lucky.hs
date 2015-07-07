@@ -13,7 +13,7 @@ import Machine
 maybeGen :: Gen (Maybe a) -> Gen a
 maybeGen g = fix $ \g' -> g >>= maybe g' return
 
-luckyItem = "statePred@29"
+luckyItem = "statePred@34"
 
 type GMVA = Gen (Maybe (Variation AS))
 

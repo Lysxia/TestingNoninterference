@@ -1,8 +1,7 @@
 import System.Process
 import Distribution.Simple
-import Distribution.PackageDescription
 main = defaultMainWithHooks simpleUserHooks
-  { preBuild = \_args _buildFlags -> do
+  { buildHook = \pkgdescr localbuildinfo userhooks buildflags -> do
       callCommand "cd luck ; sh prepro.sh"
-      return emptyHookedBuildInfo }
+      buildHook simpleUserHooks pkgdescr localbuildinfo userhooks buildflags }
     
