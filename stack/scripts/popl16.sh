@@ -20,7 +20,7 @@ $MAIN \
   --timeout=1 \
   --latex-output \
   --gen-lucky \
-  $@ | tee $LOGFILE
+  $@ | tee -a $LOGFILE
 
 # The following options are used for the paper:
 # --timeout=300 --gen-lucky
