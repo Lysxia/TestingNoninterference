@@ -155,7 +155,7 @@ instance ArbitraryF AStkElt where
 -- now be a separate thing from JUMP) lowers the PC tag.
 
 instance Pretty AS where
-#ifdef SHOW
+#ifdef SHOWAS
   pretty AS{..} =
     text "AS" <+> record
       [ field "amem"  $ l amem
@@ -171,7 +171,7 @@ instance Pretty AS where
 #endif
 
 instance Show AS where
-#ifdef SHOW
+#ifdef SHOWAS
   show = show . pretty
 #else
   show = error "SHOW"

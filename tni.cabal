@@ -18,7 +18,7 @@ library
   hs-source-dirs: common
   exposed-modules: Timeout, Aggregate, Average, LaTeX, Pretty, Trace, Util, Distances
   build-depends:       base >=4.8 && <4.9, pretty >=1.1 && <1.2,
-    QuickCheck >=2.8 && <2.9, unbounded-delays, random >=1.1 && <1.2,
+    QuickCheck, unbounded-delays, random >=1.1 && <1.2,
     vector, edit-distance-vector
   ghc-options: -O2
   default-language:    Haskell2010
@@ -29,9 +29,10 @@ executable stack
   other-modules:
     ArbitraryF, ArbitraryFInternal, Driver, Flags, GenerateTablesMakefile,
     Generation, GenericMachine, Instr, Labels, Machine, Observable, ObservableInst,
+    DriverUtils,
     Lucky
   build-depends:
-    base >=4.8 && <4.9, QuickCheck >=2.8 && <2.9, pretty >=1.1 && <1.2,
+    base >=4.8 && <4.9, QuickCheck, pretty >=1.1 && <1.2,
     cmdargs >=0.10 && <0.11, template-haskell >=2.10 && <2.11, containers >=0.5 && <0.6,
     old-time, refiner, tni
   default-extensions:
@@ -45,5 +46,3 @@ executable stack
   ghc-options: -O2
   ghc-prof-options: -fprof-auto
   default-language:    Haskell2010
-
-  
