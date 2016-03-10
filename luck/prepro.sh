@@ -1,6 +1,6 @@
 #!/bin/sh
 set +x
-GENDIR=core/
+GENDIR=luck/
 mkdir -p $GENDIR
 BASENAME=PicoGenExec
 for START in "" "-DSTARTANY" ; do
@@ -9,7 +9,7 @@ for START in "" "-DSTARTANY" ; do
       "-DBUGSTOREVALUE" "-DBUGSTOREPOINTER" "-DBUGSTOREPC" \
       "-DBUGJUMPNORAISE" "-DBUGJUMPLOWER" \
       "-DBUGCALL" "-DBUGRETURN" ; do
-      m4 $START $EQUIV $BUG $BASENAME.m4 > $GENDIR$BASENAME$START$EQUIV$BUG.core
+      m4 $START $EQUIV $BUG $BASENAME.m4 > $GENDIR$BASENAME$START$EQUIV$BUG.luck
     done
   done
 done

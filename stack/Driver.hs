@@ -24,7 +24,7 @@ import Machine
 import Generation () -- Import just Arbitrary
 import Observable
 import ObservableInst ()
-import Lucky
+import Luck.Template
 
 import System.Time
 import System.Exit
