@@ -526,8 +526,11 @@ fun wellFormed as =
     let' (Atom pcLab addr) = pc in
     length instrs PROG_LENGTH &&
     wellFormedMemory mem &&
-    wellFormedStack stack &&
-    (ifdef(STARTANY, {{isProgAddr addr}}, {{addr == 0 && isLow pcLab}})) !addr &&
+    ifdef(STARTARBITRARY, {{wellFormedStack stack}},
+      ifdef(STARTQUASIINITIAL, {{wellFormedStack stack}},
+        {{length stack 0}})) &&
+    addr == 0 !addr &&
+    ifdef(STARTARBITRARY, {{}}, {{isLow pcLab &&}})
     runsLong RUN_LENGTH (replicate PROG_LENGTH False) as
 
 sig indistState :: AS -> AS -> Bool
@@ -538,7 +541,7 @@ fun indistState as1 as2 =
     ifdef(EQUIVFULL,
     {{-- Full
     && if isHighAtom pc1 then indistStkCrop s1 s2 else indistStkLow s1 s2}},
-    {{-- Low, does the same as EQUIVFULL if STARTANY is *not* defined.
+    {{-- Low, does the same as EQUIVFULL if STARTARBITRARY is *not* defined.
     && indistStkLow s1 s2}})
 
 sig statePred :: AS -> AS -> Bool

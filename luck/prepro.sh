@@ -3,7 +3,7 @@ set +x
 GENDIR=luck/
 mkdir -p $GENDIR
 BASENAME=PicoGenExec
-for START in "" "-DSTARTANY" ; do
+for START in "" "-DSTARTQUASIINITIAL" "-DSTARTARBITRARY" ; do
   for EQUIV in "" "-DEQUIVFULL" ; do
     for BUG in "" "-DBUGARITH" "-DBUGPUSH" "-DBUGPOP" "-DBUGLOAD" \
       "-DBUGSTOREVALUE" "-DBUGSTOREPOINTER" "-DBUGSTOREPC" \
@@ -13,4 +13,3 @@ for START in "" "-DSTARTANY" ; do
     done
   done
 done
-
