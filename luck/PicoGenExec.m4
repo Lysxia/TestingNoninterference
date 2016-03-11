@@ -248,7 +248,7 @@ ifdef({{BUGWDOWNHIGHPTR}},
 sig wellFormedMultiInstr :: Instr -> Instr -> Int -> AS -> Bool
 fun wellFormedMultiInstr i j stackSize st =
     case i of
-    | 1 % Push (Atom l n) ->
+    | 100 % Push (Atom l n) ->
         case j of
         | 1 % Load -> MEM(n) && wellFormedLabel l
         | 3 % Store -> stackSize >= 1 && MEM(n) &&
@@ -268,7 +268,7 @@ ifdef({{BUGWDOWNHIGHPTR}},
         | 1 % Call m True -> PROG(n) && (0 <= m && m < stackSize) !m && wellFormedLabel l
         | _ -> False
         end
-    | 0 % _ -> False
+    | 1 % _ -> False
     end
 
 sig wellFormedInstrs :: [Bool] -> [Instr] -> Int -> Int -> Bool -> AS -> Bool
@@ -520,5 +520,5 @@ fun indistState as1 as2 =
     && indistStkLow s1 s2}})
 
 sig statePred :: AS -> AS -> Bool
-fun statePred as1 as2 =
+fun statePred {as1 :: 100} {as2 :: 100} =
     wellFormed as1 && indistState as1 as2
