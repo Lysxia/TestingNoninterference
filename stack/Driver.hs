@@ -40,7 +40,7 @@ dynFlagsDflt :: DynFlags
 dynFlagsDflt
   = TMUDriver { gen_instrs       = InstrsCally
               , gen_strategy     = GenByExec
-              , gen_lucky        = False
+              , gen_lucky        = NoLuck
               , gen_instrs_range = (20,50)
                
               , starting_as = StartQuasiInitial

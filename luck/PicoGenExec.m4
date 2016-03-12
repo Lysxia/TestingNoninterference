@@ -122,7 +122,7 @@ fun indistInstr i1 i2 =
     | (Load, Load) -> True
     | (Store, Store) -> True
     | (Jump, Jump) -> True
-    | (Call a1 True, Call a2 True) -> inRange a1 && a1 == a2
+    | (Call a1 True, Call a2 True) -> inRange a1 !a1 && (a1 == a2) !a2
     | (Return True, Return True) -> True
     | (Halt, Halt) -> True
     | _ -> False

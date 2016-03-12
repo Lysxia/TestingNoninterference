@@ -450,29 +450,30 @@ asGen :: (?f :: DynFlags) => Gen (Variation AS)
 asGen =
   let TMUDriver{..} = ?f
       DerivedFlags{..} = derivedFlags in
-  if gen_lucky
-  then
-    -- Generator written in Luck
-    maybeGen $
-      case (gen_instrs, starting_as, equiv) of
+  case gen_lucky of
+    LuckByExec ->
+      -- Generator written in Luck
+      maybeGen $
+        case (gen_instrs, starting_as, equiv) of
 --        (InstrsCally, StartArbitrary, EquivFull) -> genByExec_Arbitrary_EquivLow
 --        (InstrsCally, StartArbitrary, EquivLow) -> genByExec_Arbitrary_EquivLow
 --        (InstrsCally, StartQuasiInitial, EquivFull) -> genByExec_QInit_EquivLow
-        (InstrsCally, StartQuasiInitial, EquivLow)
-          | bugArithNoTaint -> genByExec_QInit_EquivLow_BugArith
-          | bugPushNoTaint -> genByExec_QInit_EquivLow_BugPush
-          | bugLoadNoTaint -> genByExec_QInit_EquivLow_BugLoad
-          | bugPopPopsReturns -> genByExec_QInit_EquivLow_BugPop
-          | bugStoreNoValueTaint -> genByExec_QInit_EquivLow_BugStoreValue
-          | bugStoreNoPointerTaint -> genByExec_QInit_EquivLow_BugStorePointer
-          | bugStoreNoPcTaint -> genByExec_QInit_EquivLow_BugStorePC
-          | bugJumpNoRaisePc -> genByExec_QInit_EquivLow_BugJumpNoRaise
-          | bugJumpLowerPc -> genByExec_QInit_EquivLow_BugJumpLower
-          | bugCallNoRaisePc -> genByExec_QInit_EquivLow_BugCall
-          | bugReturnNoTaint -> genByExec_QInit_EquivLow_BugReturn
-          | otherwise -> genByExec_QInit_EquivLow
-        _ -> error "Unsupported Lucky generator."
-  else arbitraryF
+          (InstrsCally, StartQuasiInitial, EquivLow)
+            | bugArithNoTaint -> genByExec_QInit_EquivLow_BugArith
+            | bugPushNoTaint -> genByExec_QInit_EquivLow_BugPush
+            | bugLoadNoTaint -> genByExec_QInit_EquivLow_BugLoad
+            | bugPopPopsReturns -> genByExec_QInit_EquivLow_BugPop
+            | bugStoreNoValueTaint -> genByExec_QInit_EquivLow_BugStoreValue
+            | bugStoreNoPointerTaint -> genByExec_QInit_EquivLow_BugStorePointer
+            | bugStoreNoPcTaint -> genByExec_QInit_EquivLow_BugStorePC
+            | bugJumpNoRaisePc -> genByExec_QInit_EquivLow_BugJumpNoRaise
+            | bugJumpLowerPc -> genByExec_QInit_EquivLow_BugJumpLower
+            | bugCallNoRaisePc -> genByExec_QInit_EquivLow_BugCall
+            | bugReturnNoTaint -> genByExec_QInit_EquivLow_BugReturn
+            | otherwise -> genByExec_QInit_EquivLow
+          _ -> error "Unsupported Lucky generator."
+    LuckSSNI -> maybeGen genSSNI
+    NoLuck -> arbitraryF
 
 checkProperty :: (?f :: DynFlags) => IORef Int -> PropTest -> Integer -> IO (Either Int Result,Integer)
 -- Returns used time in microseconds and either number of tests run (until timeout) or a result

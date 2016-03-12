@@ -19,51 +19,83 @@ type GMVA = Gen (Maybe (Variation AS))
 
 genByExec_Arbitrary_EquivLow :: GMVA
 genByExec_Arbitrary_EquivLow
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow :: GMVA
 genByExec_QInit_EquivLow
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL.luck")
+        defFlags{_maxUnroll=1} TProxy2
+
+genSSNI :: GMVA
+genSSNI
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/SSNI.luck")
+        defFlags{_maxUnroll=3} TProxy2
 
 genByExec_QInit_EquivLow_BugArith :: GMVA
 genByExec_QInit_EquivLow_BugArith
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGARITH.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGARITH.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugPush :: GMVA
 genByExec_QInit_EquivLow_BugPush
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGPUSH.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGPUSH.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugPop :: GMVA
 genByExec_QInit_EquivLow_BugPop
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGPOP.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGPOP.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugLoad :: GMVA
 genByExec_QInit_EquivLow_BugLoad
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGLOAD.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGLOAD.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugStoreValue :: GMVA
 genByExec_QInit_EquivLow_BugStoreValue
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREVALUE.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREVALUE.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugStorePointer :: GMVA
 genByExec_QInit_EquivLow_BugStorePointer
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREPOINTER.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREPOINTER.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugStorePC :: GMVA
 genByExec_QInit_EquivLow_BugStorePC
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREPC.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGSTOREPC.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugJumpNoRaise :: GMVA
 genByExec_QInit_EquivLow_BugJumpNoRaise
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGJUMPNORAISE.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGJUMPNORAISE.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugJumpLower :: GMVA
 genByExec_QInit_EquivLow_BugJumpLower
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGJUMPLOWER.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGJUMPLOWER.luck")
+        defFlags{_maxUnroll=1} TProxy2
 genByExec_QInit_EquivLow_BugCall :: GMVA
 genByExec_QInit_EquivLow_BugCall
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGCALL.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGCALL.luck")
+        defFlags{_maxUnroll=1} TProxy2
 
 genByExec_QInit_EquivLow_BugReturn :: GMVA
 genByExec_QInit_EquivLow_BugReturn
-  = fmap (uncurry Variation) <$> $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGRETURN.luck" tProxy2Q)
+  = (fmap . fmap . uncurry) Variation $
+      $(mkGenQ "luck/luck/PicoGenExec-DSTARTQUASIINITIAL-DBUGRETURN.luck")
+        defFlags{_maxUnroll=1} TProxy2

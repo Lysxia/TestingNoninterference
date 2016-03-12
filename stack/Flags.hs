@@ -184,6 +184,9 @@ data StkEltEquiv = TagOnTop   -- correct + default (high values and high
                               --            from all high return addresses)
                  deriving (Eq, Read, Show, Ord, Enum, Bounded, Data, Typeable)
 
+data GenLucky = LuckByExec | LuckSSNI | NoLuck
+  deriving (Eq, Read, Show, Ord, Enum, Bounded, Data, Typeable)
+
 data TMUDriver
   = TMUDriver { -- Generation behavior
 
@@ -191,7 +194,7 @@ data TMUDriver
              
              , gen_strategy     :: GenStrategy
              -- Overrides gen_strategy
-             , gen_lucky        :: Bool
+             , gen_lucky        :: GenLucky
              , gen_instrs_range :: (Int,Int)
                   -- (x,y) <- gen_instrs_range
                   -- Generate an arbitrary number of instructions >= x and <= y
