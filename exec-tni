@@ -1,0 +1,18 @@
+#!/bin/sh
+PROP=PropLLNI
+# PROP=PropSSNI
+LUCK=LuckByExec
+# LUCK=LuckSSNI
+EXTRAS=
+# EXTRAS=--show-counterexamples
+stack exec tni-stack -- \
+  --gen-instrs=InstrsCally \
+  --ifc-semantics=[IfcDefault] \
+  --prop-test=$PROP \
+  --equiv=EquivLow \
+  --starting-as=StartQuasiInitial \
+  --gen-strategy=GenByExec \
+  --gen-lucky=$LUCK \
+  --timeout=1 \
+  $EXTRAS \
+  +RTS -M6G
